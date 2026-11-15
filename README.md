@@ -24,3 +24,7 @@ Der eigene Code steht unter der [MIT-Lizenz](LICENSE). Hinweise zu den Drittprog
 
 Der lokale Entwurf ist unsigniert. Der geplante Weg über [SignPath Foundation](https://signpath.org/terms) setzt ein veröffentlichtes Projekt, nachvollziehbare Builds und die Aufnahme durch SignPath voraus. Danach wird die Signierung als separater Release-Schritt eingerichtet und jede signierte EXE mit neu berechneter Prüfsumme veröffentlicht.
 
+
+## Code signing policy
+
+[Signierregeln, Verantwortliche und Datenschutz](docs/CODE-SIGNING.md).
