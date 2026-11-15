@@ -4,7 +4,7 @@ AppName=Plattenkoffer
 AppPublisher=Mindgamer
 SetupIconFile=SetArchiv.ico
 UninstallDisplayIcon={app}\SetArchiv.ico
-AppVersion=0.1.13
+AppVersion=0.1.14
 DefaultDirName={localappdata}\Programs\Plattenkoffer
 DisableDirPage=no
 DisableProgramGroupPage=yes
@@ -15,7 +15,7 @@ CreateUninstallRegKey=no
 ArchitecturesAllowed=x64compatible
 MinVersion=10.0
 OutputDir=..\release
-OutputBaseFilename=Plattenkoffer-Setup-0.1.13
+OutputBaseFilename=Plattenkoffer-Setup-0.1.14
 WizardStyle=modern
 ArchiveExtraction=full
 
@@ -102,11 +102,3 @@ begin
     Result := 'Werkzeugpaket ' + PackageName + ': ' + GetExceptionMessage;
   end;
 end;
-
-
-
-
-
-
-
-

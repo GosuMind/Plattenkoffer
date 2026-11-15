@@ -810,14 +810,17 @@ function Show-LocalImport([string[]]$Paths) {
         if ($eventArgs.RowIndex -ge 0 -and $eventArgs.ColumnIndex -in @(1,2)) { Refresh-ImportTargets }
     })
     $actions = [Windows.Forms.FlowLayoutPanel]@{ Dock='Bottom'; Height=46 }
+    $copyFiles = [Windows.Forms.Button]@{ Text='Dateien kopieren'; AutoSize=$true }
     $commit = [Windows.Forms.Button]@{ Text='Dateien verschieben'; AutoSize=$true }
     $cancel = [Windows.Forms.Button]@{ Text='Schließen'; AutoSize=$true; DialogResult='Cancel' }
     $hint = [Windows.Forms.Label]@{ Text='Gleicher DJ und Set-Titel gruppieren mehrere Teile.'; AutoSize=$true; Margin=[Windows.Forms.Padding]::new(8,8,0,0) }
-    $actions.Controls.AddRange(@($commit,$cancel,$hint))
+    $actions.Controls.AddRange(@($copyFiles,$commit,$cancel,$hint))
     $dialog.Controls.Add($table)
     $dialog.Controls.Add($actions)
     $dialog.CancelButton = $cancel
-    $commit.Add_Click({
+    $importFiles = {
+        param($sender,$eventArgs)
+        $copy = $sender -eq $copyFiles
         [void]$table.EndEdit()
         Refresh-ImportTargets
         try {
@@ -839,14 +842,22 @@ function Show-LocalImport([string[]]$Paths) {
             foreach ($move in $plan) {
                 if (!$move.Same) {
                     [void][IO.Directory]::CreateDirectory($move.Directory)
-                    [IO.File]::Move($move.Source,$move.Target)
+                    if ($copy) {
+                        $temporary = Join-Path $move.Directory ('.import-' + [guid]::NewGuid().ToString('N') + '.tmp')
+                        try {
+                            [IO.File]::Copy($move.Source,$temporary)
+                            [IO.File]::Move($temporary,$move.Target)
+                        } finally { [IO.File]::Delete($temporary) }
+                    } else { [IO.File]::Move($move.Source,$move.Target) }
                     $move.Row.Tag = $move.Target
                 }
             }
             $status.Text = "$($plan.Count) MP3-Dateien einsortiert."
             $dialog.DialogResult = 'OK'
         } catch { [void][Windows.Forms.MessageBox]::Show($dialog, $_.Exception.Message, 'MP3-Import') }
-    })
+    }
+    $copyFiles.Add_Click($importFiles)
+    $commit.Add_Click($importFiles)
     Set-WindowTheme $dialog
     try { [void]$dialog.ShowDialog($form) } finally { $dialog.Dispose() }
 }
@@ -1054,12 +1065,12 @@ function Export-LibrarySet($SetPath, $Root, $Mode, [int]$Bitrate) {
     }
 }
 
-function Show-SetExport($Owner, $SetPath) {
+function Show-SetExport($Owner, [string[]]$SetPaths) {
     $dialog = [Windows.Forms.Form]@{
-        Text = 'Set exportieren'; ClientSize = [Drawing.Size]::new(610, 235); StartPosition = 'CenterParent'
+        Text = 'Auf Gerät exportieren'; ClientSize = [Drawing.Size]::new(610, 235); StartPosition = 'CenterParent'
         FormBorderStyle = 'FixedDialog'; MinimizeBox = $false; MaximizeBox = $false; Font = $form.Font
     }
-    $label = [Windows.Forms.Label]@{ Text='Zielordner'; Left=12; Top=12; AutoSize=$true }
+    $label = [Windows.Forms.Label]@{ Text='USB-Stick oder Zielordner'; Left=12; Top=12; AutoSize=$true }
     $path = [Windows.Forms.TextBox]@{ Left=12; Top=37; Width=460 }
     $browse = [Windows.Forms.Button]@{ Text='Durchsuchen …'; Left=480; Top=34; Width=118; Height=30 }
     $format = [Windows.Forms.ComboBox]@{ Left=12; Top=78; Width=345; DropDownStyle='DropDownList'; AccessibleName='Exportformat' }
@@ -1069,7 +1080,7 @@ function Show-SetExport($Owner, $SetPath) {
     $rate.SelectedIndex = 2
     $format.Add_SelectedIndexChanged({ $rate.Enabled = $format.SelectedIndex -gt 0 })
     $format.SelectedIndex = 0
-    $feedback = [Windows.Forms.Label]@{ Left=12; Top=122; Width=585; Height=60; Text='Der Export wird in einem eigenen Set-Ordner abgelegt.' }
+    $feedback = [Windows.Forms.Label]@{ Left=12; Top=122; Width=585; Height=60; Text="$($SetPaths.Count) ausgewählte Einträge. Jeder Eintrag erhält einen eigenen Ordner." }
     $start = [Windows.Forms.Button]@{ Text='Exportieren'; Left=360; Top=190; Width=115; Height=32 }
     $close = [Windows.Forms.Button]@{ Text='Schließen'; Left=483; Top=190; Width=115; Height=32; DialogResult='Cancel' }
     $browse.Add_Click({
@@ -1084,7 +1095,7 @@ function Show-SetExport($Owner, $SetPath) {
         $refresh.Stop()
         try {
             $result = $export.Worker.EndInvoke($export.Handle)
-            $feedback.Text = "Export fertig: $($result[-1])"
+            $feedback.Text = "$($result.Count) Einträge exportiert nach $($export.Root)."
         } catch { $feedback.Text = $_.Exception.Message; Write-AppError 'Export' "Export fehlgeschlagen (Code $($_.Exception.HResult))." }
         finally {
             $export.Worker.Dispose()
@@ -1097,14 +1108,15 @@ function Show-SetExport($Owner, $SetPath) {
             $root = $path.Text.Trim()
             if ($root -notmatch '^(?:[A-Za-z]:[\\/]|\\\\[^\\]+\\[^\\]+)') { throw 'Bitte einen vollständigen Zielordner auswählen.' }
             $export.Worker = [PowerShell]::Create()
-            $script = 'param($ffmpeg,$utf8,$SetPath,$Root,$Mode,$Bitrate); $ErrorActionPreference = "Stop";'
+            $script = 'param($ffmpeg,$utf8,$SetPaths,$Root,$Mode,$Bitrate); $ErrorActionPreference = "Stop";'
             foreach ($fn in @('Safe-Name','Assert-SafePath','Get-SetAudio','Export-LibrarySet')) {
                 $script += "function $fn { $((Get-Command $fn).Definition) }`n"
             }
-            $script += 'Export-LibrarySet $SetPath $Root $Mode $Bitrate'
+            $script += 'foreach ($path in $SetPaths) { $destination = Export-LibrarySet $path $Root $Mode $Bitrate; $destination }'
             $mode = @('Copy','MP3','Join')[$format.SelectedIndex]
             $bitrate = @(128,192,256,320)[$rate.SelectedIndex]
-            [void]$export.Worker.AddScript($script).AddArgument($ffmpeg).AddArgument($utf8).AddArgument($SetPath).AddArgument($root).AddArgument($mode).AddArgument($bitrate)
+            [void]$export.Worker.AddScript($script).AddArgument($ffmpeg).AddArgument($utf8).AddArgument($SetPaths).AddArgument($root).AddArgument($mode).AddArgument($bitrate)
+            $export.Root = $root
             $export.Handle = $export.Worker.BeginInvoke()
             $start.Enabled = $close.Enabled = $false
             $feedback.Text = 'Export läuft …'
@@ -1157,7 +1169,7 @@ function Edit-LibrarySet($Owner, $Root, $Source, $Artist, $Title) {
     $titleLabel = [Windows.Forms.Label]@{ Text='Set-Titel'; Left=12; Top=70; AutoSize=$true }
     $titleBox = [Windows.Forms.TextBox]@{ Text=$Title; Left=12; Top=93; Width=615; AccessibleName='Set-Titel' }
     $targetBox = [Windows.Forms.TextBox]@{ Left=12; Top=150; Width=615; ReadOnly=$true; AccessibleName='Zielordner' }
-    $targetLabel = [Windows.Forms.Label]@{ Text='Zielordner'; Left=12; Top=127; AutoSize=$true }
+    $targetLabel = [Windows.Forms.Label]@{ Text='USB-Stick oder Zielordner'; Left=12; Top=127; AutoSize=$true }
     $save = [Windows.Forms.Button]@{ Text='Speichern'; Left=388; Top=197; Width=115; Height=32 }
     $cancel = [Windows.Forms.Button]@{ Text='Abbrechen'; Left=512; Top=197; Width=115; Height=32; DialogResult='Cancel' }
     $refreshTarget = {
@@ -1198,7 +1210,7 @@ function Show-Library([string]$Root) {
     $search = [Windows.Forms.TextBox]@{ Dock = 'Fill'; AccessibleName = $label.Text }
     $table = [Windows.Forms.DataGridView]@{
         Dock = 'Fill'; ReadOnly = $true; AllowUserToAddRows = $false; AllowUserToDeleteRows = $false
-        RowHeadersVisible = $false; MultiSelect = $false; SelectionMode = 'FullRowSelect'
+        RowHeadersVisible = $false; MultiSelect = $true; SelectionMode = 'FullRowSelect'
         AutoSizeColumnsMode = 'Fill'; BackgroundColor = [Drawing.Color]::White
     }
     foreach ($column in @(@('Künstler',22), @('Titel',31), @('Ordner',36), @('Typ',11))) {
@@ -1221,7 +1233,7 @@ function Show-Library([string]$Root) {
     $count.Dock = 'None'
     $count.AutoSize = $true
     $count.Margin = [Windows.Forms.Padding]::new(8,6,0,0)
-    $exportButton = [Windows.Forms.Button]@{ Text='Exportieren …'; AutoSize=$true; Enabled=$false }
+    $exportButton = [Windows.Forms.Button]@{ Text='Auf Gerät exportieren …'; AutoSize=$true; Enabled=$false }
     $editButton = [Windows.Forms.Button]@{ Text='Eintrag bearbeiten …'; AutoSize=$true; Enabled=$false }
     $bottom.Controls.AddRange(@($play, $exportButton, $editButton, $count))
     $editButton.Add_Click({
@@ -1235,10 +1247,12 @@ function Show-Library([string]$Root) {
         }
     })
     $exportButton.Add_Click({
-        if ($table.CurrentRow) { Show-SetExport $dialog ([string]$table.CurrentRow.Cells[2].Value) }
+        $selectedPaths = @($table.SelectedRows | Sort-Object Index | ForEach-Object { [string]$_.Cells[2].Value })
+        if ($selectedPaths.Count) { Show-SetExport $dialog $selectedPaths }
     })
     $panel.Controls.Add($bottom, 0, 3)
-    $table.Add_SelectionChanged({ $exportButton.Enabled = $play.Enabled = $null -ne $table.CurrentRow
+    $table.Add_SelectionChanged({ $exportButton.Enabled = $table.SelectedRows.Count -gt 0
+        $play.Enabled = $table.SelectedRows.Count -eq 1
         $editButton.Enabled = $play.Enabled -and !$state.Worker })
     $play.Add_Click({
         if (!$table.CurrentRow) { return }
@@ -1395,47 +1409,3 @@ $form.Add_FormClosing({
 })
 Set-WindowTheme $form
 try { [void]$form.ShowDialog() } finally { $timer.Dispose(); $form.Dispose(); $lock.Dispose() }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
