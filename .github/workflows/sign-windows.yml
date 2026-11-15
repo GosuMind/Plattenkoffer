@@ -1,0 +1,64 @@
+name: Sign Windows installer
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  sign:
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-2025
+    timeout-minutes: 80
+    environment: signpath-release
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Build installer
+        shell: pwsh
+        run: ./build/Build-Windows.ps1
+      - name: Upload installer for signing
+        id: unsigned
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Plattenkoffer-SignPath-Unsigned
+          path: release/Plattenkoffer-Setup-*.exe
+          if-no-files-found: error
+      - name: Request SignPath signature
+        uses: SignPath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: signed
+      - name: Verify signature and generate checksum
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $original = @(Get-ChildItem -LiteralPath release -Filter 'Plattenkoffer-Setup-*.exe' -File)
+          $signed = @(Get-ChildItem -LiteralPath signed -Filter '*.exe' -File -Recurse)
+          if ($original.Count -ne 1 -or $signed.Count -ne 1 -or $original[0].Name -cne $signed[0].Name) {
+            throw 'SignPath returned an unexpected installer.'
+          }
+          $signature = Get-AuthenticodeSignature -LiteralPath $signed[0].FullName
+          if ($signature.Status -ne 'Valid' -or !$signature.TimeStamperCertificate) {
+            throw "Expected a valid timestamped Authenticode signature. Status: $($signature.Status)"
+          }
+          $hash = (Get-FileHash -LiteralPath $signed[0].FullName -Algorithm SHA256).Hash
+          Set-Content -LiteralPath signed/SHA256SUMS.txt -Value "$hash  $($signed[0].Name)" -Encoding Ascii
+      - name: Upload verified signed installer
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Plattenkoffer-Windows-Signed
+          path: |
+            signed/**/*.exe
+            signed/SHA256SUMS.txt
+          if-no-files-found: error
