@@ -1,0 +1,8 @@
+/outputs/
+/work/
+/test-*/
+/release/
+*.exe
+*.zip
+*.log
+.env*

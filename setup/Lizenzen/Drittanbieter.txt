@@ -1,0 +1,35 @@
+﻿Drittanbieter in Plattenkoffer 0.1.13
+
+Das Weitergabe-ZIP enthält den Plattenkoffer-Installer und diese Hinweise.
+Die folgenden eigenständigen Werkzeuge lädt Setup direkt von ihren Anbietern.
+Setup prüft die SHA-256-Prüfsumme jedes ZIPs vor dem Entpacken.
+
+yt-dlp 2026.10.26 (Windows x64, yt-dlp_win.zip)
+Der Projektcode steht unter der Unlicense. Das Windows-Paket einschließlich
+der PyInstaller-Laufzeit enthält weitere Komponenten und steht als kombiniertes
+Paket unter GPLv3 oder neuer. Siehe die beiliegenden Drittanbieter-Lizenztexte.
+Release: https://github.com/yt-dlp/yt-dlp/releases/tag/2026.10.26
+Quellcode und Build-Dateien: https://github.com/yt-dlp/yt-dlp/tree/2026.10.26
+
+FFmpeg 9.0.2 Essentials (Gyan Windows-Build)
+Setup installiert ffmpeg, ffprobe und ffplay aus demselben GPLv3-Build.
+Copyright (c) 2000–2026 die FFmpeg-Entwickler.
+Build und Quellen: https://www.gyan.dev/ffmpeg/builds/#release-builds
+FFmpeg-Revision dieses Builds: https://github.com/FFmpeg/FFmpeg/tree/946fcce07b
+Lizenz: https://ffmpeg.org/legal.html
+
+Deno 2.9.8 (Windows x64)
+MIT-Lizenz. Der Originaltext mit Copyright-Hinweis liegt bei.
+Release: https://github.com/denoland/deno/releases/tag/v2.9.8
+Quellcode und Abhängigkeiten: https://github.com/denoland/deno/tree/v2.9.8
+
+Installer
+Erstellt mit Inno Setup 6.7.4 von Jordan Russell und Martijn Laan.
+Quellcode: https://github.com/jrsoftware/issrc/tree/is-6_7_4
+Die Archiv-Entpackung verwendet die Inno-Setup-Variante von 7-Zip (is7z).
+Copyright: Igor Pavlov und die in den beiliegenden Texten genannten Autoren.
+Quellcode: https://github.com/jrsoftware/is7z
+Lizenztexte für Inno Setup und is7z liegen bei.
+
+Die genannten Versionen beziehen sich auf die Erstinstallation. Spätere
+Werkzeug-Updates haben die Hinweise des jeweiligen Hersteller-Releases.
