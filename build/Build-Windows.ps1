@@ -25,10 +25,40 @@ foreach ($file in Get-ChildItem -LiteralPath (Join-Path $root 'setup') -Filter '
     [void][Management.Automation.Language.Parser]::ParseFile($file.FullName,[ref]$tokens,[ref]$errors)
     if ($errors) { throw ($errors | Out-String) }
 }
-$entry = Select-String -LiteralPath $installer -Pattern '^OutputBaseFilename=([A-Za-z0-9.-]+)$'
+$entry = Select-String -LiteralPath $installer -Pattern '^OutputBaseFilename=([A-Za-z0-9.-]+)-\{#AppVersion\}$'
 if (!$entry) { throw 'Der Installer-Dateiname fehlt.' }
-$name = $entry.Matches[0].Groups[1].Value + '.exe'
-& $Compiler /Qp "/O$output" $installer
+$version = Select-String -LiteralPath $installer -Pattern '^#define AppVersion "(\d+\.\d+\.\d+)"$'
+if (!$version) { throw 'Die Installer-Version fehlt.' }
+if ($version.Matches[0].Groups[1].Value -notmatch '^(0|[1-9][0-9]*)\.[0-9]\.[0-9]$') {
+    throw 'Die zweite und dritte Stelle der Versionsnummer müssen zwischen 0 und 9 liegen. Auf 0.2.9 folgt 0.3.0.'
+}
+$name = '{0}-{1}.exe' -f $entry.Matches[0].Groups[1].Value, $version.Matches[0].Groups[1].Value
+$compilerArguments = @('/Qp', "/O$output")
+$webViewRoot = Join-Path $root 'work/webview2'
+$webViewPackage = Join-Path $webViewRoot 'package'
+$webViewFiles = @('lib/net462/Microsoft.Web.WebView2.Core.dll','lib/net462/Microsoft.Web.WebView2.WinForms.dll','runtimes/win-x64/native/WebView2Loader.dll')
+if ($webViewFiles | Where-Object { !(Test-Path -LiteralPath (Join-Path $webViewPackage $_) -PathType Leaf) }) {
+    [void][IO.Directory]::CreateDirectory($webViewRoot)
+    $webViewArchive = Join-Path $webViewRoot 'webview2.zip'
+    Invoke-WebRequest -Uri 'https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/1.0.3485.44/microsoft.web.webview2.1.0.3485.44.nupkg' -OutFile $webViewArchive
+    if ((Get-FileHash -LiteralPath $webViewArchive).Hash -ne 'BC09150B179246AC90189649B13BE8E6B11B3AC200E817E18DF106E1F3CF489E') {
+        throw 'Die SHA-256-Prüfsumme des WebView2-SDK stimmt nicht.'
+    }
+    Expand-Archive -LiteralPath $webViewArchive -DestinationPath $webViewPackage -Force
+}
+$bootstrapper = Join-Path $webViewRoot 'MicrosoftEdgeWebview2Setup.exe'
+if (!(Test-Path -LiteralPath $bootstrapper -PathType Leaf)) {
+    Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $bootstrapper
+}
+$bootstrapperSignature = Get-AuthenticodeSignature -LiteralPath $bootstrapper
+if ($bootstrapperSignature.Status -ne 'Valid' -or $bootstrapperSignature.SignerCertificate.Subject -notmatch '^CN=Microsoft Corporation(?:,|$)') {
+    throw 'Der WebView2-Installer hat keine gültige Microsoft-Signatur.'
+}
+if ($env:PK_UPDATE_SIGNER_SHA256) {
+    if ($env:PK_UPDATE_SIGNER_SHA256 -notmatch '\A[0-9A-Fa-f]{64}\z') { throw 'Ungültiger SHA-256-Fingerabdruck für den Update-Herausgeber.' }
+    $compilerArguments += "/DUpdateSignerHash=$env:PK_UPDATE_SIGNER_SHA256"
+}
+& $Compiler @compilerArguments $installer
 if ($LASTEXITCODE) { throw "Installer-Build fehlgeschlagen (Code $LASTEXITCODE)." }
 $hash = (Get-FileHash -LiteralPath (Join-Path $output $name)).Hash
 Set-Content -LiteralPath (Join-Path $output 'SHA256SUMS.txt') -Value "$hash  $name" -Encoding Ascii

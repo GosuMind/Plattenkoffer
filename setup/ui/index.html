@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<title>Plattenkoffer</title>
+</head>
+<body style="margin:0;background:#1c1b19">
+<section id="pk-concept" lang="de">
+  <aside><strong>Plattenkoffer</strong><nav aria-label="Bibliothek"><button data-kind="">Sammlung</button><button data-kind="Set">Sets</button><button data-kind="Track">Tracks</button><button data-command="downloads">Downloads</button><button data-command="settings">Einstellungen</button><button data-help>Hilfe</button><button data-command="update" hidden>Update verfügbar</button></nav></aside>
+  <main data-collection>
+    <header><h1>Sammlung</h1><input type="search" placeholder="Sammlung durchsuchen …" aria-label="Sammlung durchsuchen"><button class="hot" data-add>＋ Hinzufügen</button><button class="support" data-command="support" aria-label="Auf Ko-fi unterstützen" title="Auf Ko-fi unterstützen">♥</button></header>
+    <div class="toolbar"><div data-filters></div><div class="views"><button data-view="cover">▦ Cover</button><button data-view="list">☰ Liste</button></div></div>
+    <p class="muted" data-count role="status"></p>
+    <div class="library"><div data-results></div><section data-detail aria-label="Eintragsdetails"></section></div>
+  </main>
+  <main data-settings hidden>
+    <header><h1>Einstellungen</h1></header>
+    <form data-settings-form>
+      <section class="settings-group"><h2>Downloads</h2><label>Downloadordner <input name="folder" required></label><button type="button" data-command="settings-browse">Durchsuchen …</button></section>
+      <section class="settings-group"><h2>Darstellung</h2><label>Farbschema <select name="theme"><option>System</option><option>Hell</option><option>Dunkel</option></select></label></section>
+      <div><button class="hot" type="submit">Speichern</button></div>
+    </form>
+    <section class="settings-group"><h2>Sicherung</h2><div class="entry-actions"><button data-command="settings-backup">Konfiguration sichern …</button><button data-restore>Konfiguration wiederherstellen …</button></div></section>
+    <p class="muted" data-settings-status role="status"></p>
+  </main>
+  <main data-convert hidden>
+    <header><h1>Umwandeln</h1></header>
+    <form data-convert-form>
+      <section class="settings-group"><h2>Quelldateien</h2><button type="button" data-command="convert-files">Dateien auswählen …</button><ul data-convert-files></ul></section>
+      <section class="settings-group"><h2>Ausgabe</h2><label>Zielformat <select name="format"><option>MP3</option><option>FLAC</option><option>WAV</option><option>AIFF</option><option>M4A (AAC)</option><option>M4A (ALAC)</option><option>Opus</option><option>OGG (Vorbis)</option></select></label>
+      <label data-convert-bitrate>Bitrate <select name="bitrate"><option>64</option><option>96</option><option>128</option><option>160</option><option selected>192</option><option>256</option><option>320</option></select> kbit/s</label>
+      <label>Abtastrate <select name="rate"><option value="">Automatisch</option><option value="44100">44,1 kHz</option><option value="48000">48 kHz</option><option value="96000">96 kHz</option></select></label>
+      <label>Kanäle <select name="channels"><option value="">Automatisch</option><option value="1">Mono</option><option value="2">Stereo</option></select></label>
+      <label>Zielordner <input name="destination" required></label><button type="button" data-command="convert-folder">Durchsuchen …</button></section>
+      <div><button class="hot" type="submit">Umwandeln</button></div>
+    </form>
+    <p data-convert-status role="status" class="muted"></p><pre data-convert-report></pre>
+  </main>
+  <main data-diagnostics hidden>
+    <header><h1>Diagnose</h1></header>
+    <div class="entry-actions"><button class="hot" data-command="diagnose-check">Versionen prüfen</button><button data-command="diagnose-copy">Fehlerdetails kopieren</button><button data-command="diagnose-logs">Logordner öffnen</button></div>
+    <section class="settings-group"><h2>Werkzeuge</h2><div class="entry-actions"><button data-command="diagnose-yt">yt-dlp aktualisieren</button><button data-command="diagnose-ffmpeg">FFmpeg aktualisieren</button><button data-command="diagnose-deno">Deno aktualisieren</button></div><pre data-diagnostic-report></pre></section>
+    <p class="muted" data-diagnostic-status role="status"></p>
+  </main>
+  <main data-downloads hidden>
+    <header><h1>Downloads</h1><button data-add>＋ Hinzufügen</button></header>
+    <form data-youtube>
+      <label data-query-label>YouTube-Suche <input name="query" maxlength="200" placeholder="DJ, Track oder Set suchen"></label>
+      <label data-links-label hidden>YouTube-Links <textarea name="links" rows="4" maxlength="16000" placeholder="Ein Link pro Zeile"></textarea></label>
+      <div class="entry-actions"><button type="submit" class="hot" data-preview>Auf YouTube suchen</button><button type="button" data-switch>YouTube-Links eingeben</button></div>
+    </form>
+    <p class="muted" data-download-status role="status"></p>
+    <progress data-download-progress max="100" hidden aria-label="Downloadfortschritt"></progress>
+    <div data-preview-rows></div>
+    <div class="entry-actions"><button class="hot" data-command="download" disabled>Download starten</button><button data-command="cancel-download" disabled>Nach diesem Set stoppen</button><button data-command="resume-queue" disabled>Warteschlange fortsetzen</button><button data-command="retry-queue" disabled>Fehlgeschlagene erneut versuchen</button></div>
+    <details data-download-log hidden><summary>Details zum Vorgang</summary><pre></pre></details>
+  </main>
+  <footer><div data-now>Kein Titel ausgewählt</div><button data-toggle disabled aria-label="Wiedergabe starten">▶</button><div class="timeline"><input type="range" aria-label="Wiedergabeposition" value="0" max="1" disabled><small data-time>–</small></div><button data-command="stop" aria-label="Wiedergabe stoppen" disabled>■</button><label class="volume">Lautstärke<input data-volume type="range" min="0" max="100" value="80"></label></footer>
+  <dialog data-import-dialog><form method="dialog">
+    <header><h2>Musik hinzufügen</h2><button aria-label="Schließen">×</button></header>
+    <button type="button" data-command="youtube-search">YouTube-Suche</button>
+    <button type="button" data-command="youtube-link">YouTube-Links</button>
+    <button type="button" data-command="files">Dateien verknüpfen …</button>
+    <button type="button" data-command="folders">Ordner einlesen …</button>
+    <button type="button" data-command="copy">MP3s kopieren oder verschieben …</button>
+  </form></dialog>
+  <dialog data-entry-dialog><form data-entry-form>
+    <header><h2 data-entry-title></h2><button type="button" data-close-entry aria-label="Schließen">×</button></header>
+    <div data-entry-fields class="edit"></div>
+    <div data-set-name-preview class="settings-group" hidden>
+      <h3>Set-Name in der Sammlung</h3><output aria-live="polite"></output>
+    </div>
+    <p data-entry-status role="status" class="muted"></p>
+    <button data-entry-submit class="hot" type="submit"></button>
+  </form></dialog>
+  <dialog data-help-dialog><form method="dialog">
+    <header><h2>Hilfe</h2><button aria-label="Schließen">×</button></header>
+    <button type="button" data-command="about">Über Plattenkoffer</button>
+    <button type="button" data-command="check-updates">Nach Updates suchen</button>
+    <button type="button" data-command="diagnostics">Diagnose</button>
+  </form></dialog>
+  <dialog data-restore-dialog><form method="dialog">
+    <h2>Konfiguration wiederherstellen</h2>
+    <p>Die ZIP-Sicherung ersetzt die aktuelle Konfiguration. Plattenkoffer wird anschließend geschlossen.</p>
+    <button type="button" class="hot" data-command="settings-restore">ZIP-Datei auswählen …</button>
+    <button>Abbrechen</button>
+  </form></dialog>
+</section>
+<style>
+#pk-concept{--bg:#1c1b19;--panel:#25231f;--line:#454039;--ink:#fcf0df;--muted:#c8baaa;--orange:#aa4926;background:var(--bg);color:var(--ink);color-scheme:dark;display:grid;grid-template-columns:155px minmax(0,1fr);font:14px/1.4 "Instrument Sans",system-ui,sans-serif;border-radius:12px;overflow:hidden}
+#pk-concept *{box-sizing:border-box} #pk-concept [hidden]{display:none!important}
+#pk-concept aside{padding:24px 12px;background:#161513;border-right:1px solid var(--line)}
+#pk-concept aside strong{font-size:17px;display:block;margin:0 0 22px 6px}
+#pk-concept nav{display:grid;gap:5px} #pk-concept nav button{text-align:left;border-color:transparent}
+#pk-concept main{padding:20px;min-width:0} #pk-concept h1,#pk-concept h2,#pk-concept p{margin:0}
+#pk-concept h1{font-size:30px} #pk-concept h2{font-size:20px}
+#pk-concept header,#pk-concept .toolbar,#pk-concept [data-filters],#pk-concept .views{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#pk-concept header input{margin-left:auto;flex:1;min-width:min(180px,100%)} #pk-concept .toolbar{margin:15px 0 8px;justify-content:space-between}
+#pk-concept button,#pk-concept select,#pk-concept input:not([type=range]){font:inherit;min-height:36px;padding:6px 10px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--ink);max-width:100%}
+#pk-concept button{cursor:pointer} #pk-concept button:disabled{opacity:.5;cursor:default}
+#pk-concept button.hot,#pk-concept button[aria-pressed=true]{background:var(--orange);border-color:#c36137;color:#fff}
+#pk-concept .muted,#pk-concept small{color:var(--muted)} #pk-concept [data-count]{margin-bottom:10px}
+#pk-concept .library{display:grid;grid-template-columns:minmax(0,1fr) minmax(145px,21%);gap:15px}
+#pk-concept .covers{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,120px),1fr));gap:12px}
+#pk-concept .cover{padding:0;text-align:left;overflow:hidden;min-width:0} #pk-concept .cover>span{display:block;padding:7px 9px}
+#pk-concept .art{display:block;width:100%;aspect-ratio:1.15;object-fit:cover;background:radial-gradient(circle at 35% 35%,#b96735,#282523 65%)}
+#pk-concept table{border-collapse:collapse;width:100%;text-align:left} #pk-concept th,#pk-concept td{padding:5px;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+#pk-concept td button{width:100%;text-align:left} #pk-concept [data-detail]{padding-left:13px;border-left:1px solid var(--line);overflow-wrap:anywhere}
+#pk-concept [data-detail] p{margin:6px 0} #pk-concept [data-detail] dl{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:12px 0} #pk-concept dd{margin:0}
+#pk-concept footer{grid-column:1/-1;border-top:1px solid var(--line);display:grid;grid-template-columns:minmax(110px,1fr) auto 2fr;align-items:center;gap:12px;padding:12px 18px;background:#211f1b}
+#pk-concept .timeline{display:grid;gap:3px} #pk-concept input[type=range]{width:100%;accent-color:#ee8756;margin:0} #pk-concept footer button{border-radius:50%;min-width:42px;height:42px}
+#pk-concept dialog{background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:18px;width:min(500px,94%)} #pk-concept dialog::backdrop{background:#0009}
+#pk-concept form,#pk-concept form label{display:grid;gap:6px;min-width:0} #pk-concept form{gap:11px} #pk-concept form header{justify-content:space-between}
+#pk-concept .edit{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+@media(max-width:750px){#pk-concept{grid-template-columns:1fr} #pk-concept aside{padding:9px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap} #pk-concept aside strong{margin:0} #pk-concept nav{display:flex} #pk-concept main{padding:14px} #pk-concept .library{grid-template-columns:1fr} #pk-concept [data-detail]{border-left:0;border-top:1px solid var(--line);padding:10px 0 0} #pk-concept [data-detail] .art{display:none}}
+@media(max-width:500px){#pk-concept th:nth-child(n+3),#pk-concept td:nth-child(n+3){display:none} #pk-concept .covers{grid-template-columns:repeat(2,minmax(0,1fr))}}
+#pk-concept{height:100vh;border-radius:0;grid-template-rows:minmax(0,1fr) auto}
+#pk-concept main{min-height:0;overflow:auto}
+#pk-concept footer{grid-template-columns:minmax(110px,1fr) auto minmax(80px,2fr) auto minmax(65px,110px)}
+#pk-concept .volume{font-size:12px;color:var(--muted)}
+#pk-concept aside strong{white-space:nowrap}
+#pk-concept nav button:not([aria-pressed=true]):not([data-command=update]){background:transparent}
+#pk-concept nav button:hover:not([aria-pressed=true]){background:var(--panel)}
+#pk-concept .covers{grid-template-columns:repeat(4,minmax(0,1fr));align-content:start}
+#pk-concept .cover>span:not(.cover-art){overflow-wrap:anywhere}
+@media(max-width:1050px){#pk-concept .covers{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:620px){#pk-concept .covers{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:500px){#pk-concept footer{grid-template-columns:minmax(0,1fr) auto minmax(65px,1fr) auto}#pk-concept .volume{grid-column:1/-1}}
+#pk-concept .support{color:#ff5d63;font-size:22px;padding:0 8px}
+#pk-concept .cover-art{display:block;padding:0!important;aspect-ratio:1.15;background:radial-gradient(circle,#e47145 0 7%,#171514 8% 27%,#23201d 28% 29%,#141311 30% 37%,#362b25 38%);overflow:hidden}
+#pk-concept .cover-art .art{height:100%}
+#pk-concept .entry-actions{display:flex;gap:6px;flex-wrap:wrap}
+#pk-concept .detail-icon{width:38px;padding:0;font:19px/1 "Segoe UI Symbol",sans-serif}
+#pk-concept [data-downloads]{display:grid;align-content:start;gap:14px;min-width:0}
+#pk-concept [data-youtube] label{max-width:600px}
+#pk-concept textarea{resize:vertical;min-width:0;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:10px;font:inherit}
+#pk-concept [data-preview-rows] input:not([type=checkbox]),#pk-concept [data-preview-rows] select{width:100%;min-width:0}
+#pk-concept [data-preview-rows]{overflow-x:auto}
+#pk-concept progress{width:100%;accent-color:#ee8756}
+#pk-concept [data-settings],#pk-concept [data-diagnostics],#pk-concept [data-convert]{display:grid;align-content:start;gap:16px}
+#pk-concept [data-convert-report]{white-space:pre-wrap;overflow-wrap:anywhere}
+#pk-concept .settings-group{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:14px;display:grid;gap:10px;justify-items:start;width:min(100%,700px)}
+#pk-concept .settings-group label{width:100%;max-width:560px}
+#pk-concept .settings-group input,#pk-concept .settings-group select{background:var(--bg)}
+#pk-concept [data-set-name-preview]{gap:4px;overflow-wrap:anywhere}
+#pk-concept [data-set-name-preview] h3{font-size:13px;margin:0;color:var(--muted)}
+#pk-concept [data-diagnostic-report]{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;width:100%;font:13px/1.55 Consolas,monospace;color:var(--muted)}
+#pk-concept[data-theme=Hell]{--bg:#f7f1e8;--panel:#fffaf3;--line:#d8cbbd;--ink:#271e17;--muted:#665548;color-scheme:light}
+#pk-concept[data-theme=Hell] aside,#pk-concept[data-theme=Hell] footer{background:#efe5d9}
+#pk-concept [data-download-log] pre{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--muted);font:12px/1.5 Consolas,monospace}
+#pk-concept [data-detail] h2{margin-top:8px}
+#pk-concept [data-detail][hidden]{display:none!important}
+#pk-concept .library:has([data-detail][hidden]){grid-template-columns:minmax(0,1fr)}
+@media(max-width:750px){#pk-concept{grid-template-rows:auto minmax(0,1fr) auto}#pk-concept [data-detail] .cover-art{display:none}}
+</style>
+<script src="collection.js"></script>
+
+</body></html>

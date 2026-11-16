@@ -19,7 +19,11 @@ jobs:
           persist-credentials: false
       - name: Build installer
         shell: pwsh
-        run: ./build/Build-Windows.ps1
+        env:
+          PK_UPDATE_SIGNER_SHA256: ${{ vars.PK_UPDATE_SIGNER_SHA256 }}
+        run: |
+          if (!$env:PK_UPDATE_SIGNER_SHA256) { throw 'Set PK_UPDATE_SIGNER_SHA256 to the production signing certificate SHA-256.' }
+          ./build/Build-Windows.ps1
       - name: Upload installer for signing
         id: unsigned
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -41,6 +45,8 @@ jobs:
           output-artifact-directory: signed
       - name: Verify signature and generate checksum
         shell: pwsh
+        env:
+          PK_UPDATE_SIGNER_SHA256: ${{ vars.PK_UPDATE_SIGNER_SHA256 }}
         run: |
           $ErrorActionPreference = 'Stop'
           $original = @(Get-ChildItem -LiteralPath release -Filter 'Plattenkoffer-Setup-*.exe' -File)
@@ -52,6 +58,8 @@ jobs:
           if ($signature.Status -ne 'Valid' -or !$signature.TimeStamperCertificate) {
             throw "Expected a valid timestamped Authenticode signature. Status: $($signature.Status)"
           }
+          $certificateHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($signature.SignerCertificate.RawData))
+          if ($certificateHash -ne $env:PK_UPDATE_SIGNER_SHA256) { throw 'Unexpected signing certificate.' }
           $hash = (Get-FileHash -LiteralPath $signed[0].FullName -Algorithm SHA256).Hash
           Set-Content -LiteralPath signed/SHA256SUMS.txt -Value "$hash  $($signed[0].Name)" -Encoding Ascii
       - name: Upload verified signed installer

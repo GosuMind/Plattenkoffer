@@ -2,6 +2,22 @@
 
 Windows-App von Mindgamer zum Sammeln, Organisieren und Anhören von Tracks und DJ-Sets. Die Vorschau lässt Künstler, Titel und Typ korrigieren. In der Bibliothek kannst du Aufnahmen suchen, abspielen, verschieben und als MP3 exportieren.
 
+KI-gestützte Einordnung und Track-Erkennung sind für später vorgemerkt. Der aktuelle Funktionsumfang benötigt dafür keine kostenpflichtigen Dienste. [Planungsstand und offene Punkte](docs/TRACK-ERKENNUNG.md)
+
+## Version 0.3
+
+Die Sammlung verwendet die Oberfläche des klickbaren Entwurfs mit Cover- und Listenansicht, Navigation und festem Player. Über **Hinzufügen** stehen YouTube-Suche und Linkvorschau sowie der Import vorhandener Dateien und Ordner zur Verfügung. Die Windows-App stellt die Oberfläche lokal mit Microsoft Edge WebView2 dar. Setup installiert die Runtime bei Bedarf.
+
+## Version 0.2
+
+Mit Version 0.2 bekommt die Windows-App den YouTube-Mehrfachimport, Filter für DJ, Set-Reihe, Veranstaltung und Location sowie die Möglichkeit, vorhandene Musik am bisherigen Speicherort in die Bibliothek aufzunehmen. Die Versionsnummer steht in der Titelleiste und unter **Einstellungen → Über Plattenkoffer**. Die Update-Suche verwendet GitHub Releases. Die automatische Installation setzt ein signiertes Setup und ein hinterlegtes Herausgeberzertifikat voraus.
+
+App und Installer verwenden dieselbe Versionsnummer. Die letzte Stelle läuft von 0 bis 9. Auf `0.2.9` folgt `0.3.0`. Beim nächsten Übertrag folgt auf `0.9.9` die Version `1.0.0`.
+
+## Android-Ausblick
+
+Eine Android-App für lokale Dateikopien zwischen PC und Handy und Offline-Wiedergabe ist für später geplant. [Konzept und Abnahmeszenario](docs/ANDROID-KONZEPT.md)
+
 ## Installation
 
 Windows 10 oder 11 (x64), Internetzugang und ein beschreibbarer Programmordner genügen. Starte die Setup.exe, wähle den Installationsordner und bei Bedarf das Desktop-Symbol. Das Setup bezieht yt-dlp, FFmpeg und Deno von den Anbietern und prüft die Paket-Hashes. Öffne danach unter **Einstellungen** den Dialog zur Wahl des Musikordners.
