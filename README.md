@@ -1,6 +1,24 @@
 # Plattenkoffer
 
-Windows-App von Mindgamer zum Sammeln, Organisieren und Anhören von Tracks und DJ-Sets. Die Vorschau lässt Künstler, Titel und Typ korrigieren. In der Bibliothek kannst du Aufnahmen suchen, abspielen, verschieben und als MP3 exportieren.
+Plattenkoffer ist eine kostenlose Open-Source-App für Windows zum Organisieren und Anhören deiner Musiksammlung. Verwalte Tracks und DJ-Sets mit Coverbildern, Genres und Metadaten, erstelle Playlisten und markiere deine Favoriten. Ein Mini-Player und anpassbare Ansichten begleiten dich beim Hören.
+
+Du kannst vorhandene Audiodateien importieren, unterstützte Formate umwandeln und Inhalte über YouTube-Links herunterladen, soweit dies rechtlich und nach den geltenden Plattformbedingungen zulässig ist.
+
+## Verantwortungsvoll nutzen
+
+Plattenkoffer ist ausschließlich für rechtmäßige Nutzung vorgesehen. Lade, kopiere, konvertiere oder teile Inhalte nur, wenn du dazu berechtigt bist – beispielsweise aufgrund eigener Rechte, einer entsprechenden Erlaubnis oder einer gesetzlichen Erlaubnis.
+
+Beachte das geltende Urheberrecht, die Lizenzbedingungen der Inhalte und die Nutzungsbedingungen der jeweiligen Plattform. Nutze Plattenkoffer nicht für unbefugte Downloads, rechtswidrige Weitergabe oder die unzulässige Umgehung wirksamer technischer Schutzmaßnahmen.
+
+Du bist dafür verantwortlich, die erforderlichen Berechtigungen für deine jeweilige Nutzung zu prüfen. Plattenkoffer räumt dir keine Rechte an fremden Musikstücken, Aufnahmen oder Videos ein.
+
+Plattenkoffer wird unabhängig entwickelt und steht in keiner Verbindung zu YouTube oder Google.
+
+## Kostenlos und Open Source
+
+Die Nutzung von Plattenkoffer ist kostenlos. Wenn du die Weiterentwicklung unterstützen möchtest, kannst du freiwillig [über Ko-fi](https://ko-fi.com/mindgamer49330) beitragen.
+
+Die beschriebenen Funktionen beziehen sich auf den Entwicklungsstand 0.4.7.
 
 ## Installation
 
