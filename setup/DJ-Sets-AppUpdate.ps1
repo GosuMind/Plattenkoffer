@@ -18,10 +18,15 @@ function Test-AppUpdateInstaller([string]$Path, [version]$ExpectedVersion, [stri
 }
 
 function Install-AppUpdate([string]$SetupPath, [string]$AppDirectory) {
-    $arguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOCLOSEAPPLICATIONS',
+    $acknowledgement=Join-Path $env:LOCALAPPDATA 'SetArchiv\config\nutzungshinweis-bestaetigt.ini'
+    $hasAcknowledgement=[IO.File]::Exists($acknowledgement) -and
+        ([IO.File]::ReadAllText($acknowledgement) -match '(?m)^Version=2026-11-21\.1\s*$')
+    $arguments = @('/NORESTART', '/NOCLOSEAPPLICATIONS',
         '/NORESTARTAPPLICATIONS', '/MERGETASKS="!migrate"', ('/DIR="{0}"' -f $AppDirectory),
         ('/LOG="{0}"' -f (Join-Path (Split-Path -Parent $SetupPath) 'install.log')))
-    $setup = Start-Process -FilePath $SetupPath -ArgumentList $arguments -WindowStyle Hidden -PassThru -Wait
+    if ($hasAcknowledgement) { $arguments=@('/VERYSILENT','/SUPPRESSMSGBOXES')+$arguments }
+    $windowStyle=if ($hasAcknowledgement) { 'Hidden' } else { 'Normal' }
+    $setup = Start-Process -FilePath $SetupPath -ArgumentList $arguments -WindowStyle $windowStyle -PassThru -Wait
     if ($setup.ExitCode -ne 0) { throw "Setup meldet Fehlercode $($setup.ExitCode)." }
 }
 
