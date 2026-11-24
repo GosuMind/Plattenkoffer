@@ -28,6 +28,9 @@ $versionLabel = if ($appVersion) { "Version $appVersion" } else { 'Entwicklungss
 $localLibraryPath = Join-Path $config 'dj-set-local-library.json'
 $audioExtensions = @('.mp3','.opus','.m4a','.aac','.flac','.wav','.ogg','.webm')
 $settings = @{ MusicRoot = $MusicRoot; Theme = 'System' }
+. (Join-Path $PSScriptRoot 'DJ-Sets-Personalization.ps1')
+$preferenceDefaults=Get-PkDefaultPreferences
+foreach ($key in $preferenceDefaults.Keys) { $settings[$key]=$preferenceDefaults[$key] }
 $libraryView = @{ IsCover = $true; ShowCollection = $null; OpenPage = $null; Diagnostic = @{ Worker=$null; Handle=$null; Report=''; Status='' } }
 $settingsWarning = ''
 if ([IO.File]::Exists($settingsPath)) {
@@ -36,6 +39,12 @@ if ([IO.File]::Exists($settingsPath)) {
         if ($saved.MusicRoot -notmatch '^(?:[A-Za-z]:[\\/]|\\\\[^\\]+\\[^\\]+)') { throw 'Ungültiger Musikordner.' }
         $settings.MusicRoot = [IO.Path]::GetFullPath($saved.MusicRoot)
         if ($saved.Theme -in @('Hell','Dunkel','System')) { $settings.Theme = $saved.Theme }
+        foreach ($key in $preferenceDefaults.Keys) {
+            if ($saved.PSObject.Properties[$key]) {
+                try { $settings=Merge-PkPreferences $settings ([pscustomobject]@{$key=$saved.$key}) }
+                catch { $settingsWarning='Einzelne Einstellungen wurden auf Standardwerte zurückgesetzt.' }
+            }
+        }
     } catch { $settingsWarning = 'Einstellungen konnten nicht geladen werden. Standardwerte sind aktiv.' }
 }
 
@@ -426,6 +435,7 @@ $workerCode = {
     }
 }
 function Start-Worker($Mode, $Value, $IsPlaylist) {
+    if ($web.Health.Worker) { throw 'Ein Bibliothekspflege-Vorgang läuft noch.' }
     if ($libraryView.Diagnostic.Worker) { throw 'Ein Diagnosevorgang läuft noch.' }
     $state.Mode = $Mode
     $state.StopSignal = [Threading.ManualResetEventSlim]::new($false)
@@ -626,6 +636,11 @@ $youtubeSearch.Add_KeyDown({
     }
 })
 function Select-PlaylistImport([string]$Url, [bool]$PlaylistOnly) {
+    if ($null -ne $script:WebPlaylistChoice) {
+        if ($script:WebPlaylistChoice) { return 'Playlist' }
+        if ($PlaylistOnly) { return 'Skip' }
+        return 'Video'
+    }
     $window = [Windows.Forms.Form]@{
         Text='YouTube-Playlist'; ClientSize=[Drawing.Size]::new(520,160); StartPosition='CenterParent'
         FormBorderStyle='FixedDialog'; MinimizeBox=$false; MaximizeBox=$false; Font=$form.Font
@@ -741,73 +756,156 @@ function Show-SavedQueue([bool]$Failed) {
 $resume.Add_Click({ Show-SavedQueue $false })
 $retry.Add_Click({ Show-SavedQueue $true })
 
+function Get-PkBackupFiles([string]$Root) {
+    foreach ($name in @('dj-set-gui.json','downloaded.txt','dj-set-queue.json','dj-set-aliases.json','dj-set-local-library.json','dj-set-library-state.json','set-resume.json','health-options.json')) {
+        $source=Join-Path $config $name
+        if ([IO.File]::Exists($source)) { [pscustomobject]@{Name="config/$name";Path=$source} }
+    }
+    foreach ($file in (Get-ChildItem -LiteralPath $config -File)) {
+        if ($file.Name -cmatch '^(?:tracklist-[0-9A-F]{64}\.json|cover-[0-9A-F]{64}\.jpg)$') {
+            [pscustomobject]@{Name="config/$($file.Name)";Path=$file.FullName}
+        }
+    }
+    if ([IO.Directory]::Exists($Root)) {
+        Assert-SafePath $Root
+        foreach ($artist in (Get-ChildItem -LiteralPath $Root -Directory)) {
+            Assert-SafePath $artist.FullName
+            foreach ($type in @('Sets','Tracks')) {
+                $category=Join-Path $artist.FullName $type
+                Assert-SafePath $category
+                if (![IO.Directory]::Exists($category)) { continue }
+                foreach ($folder in (Get-ChildItem -LiteralPath $category -Directory)) {
+                    Assert-SafePath $folder.FullName
+                    foreach ($name in @('plattenkoffer-tracklist.json','plattenkoffer-cover.jpg','plattenkoffer.json')) {
+                        $source=Join-Path $folder.FullName $name
+                        if ([IO.File]::Exists($source)) {
+                            [pscustomobject]@{Name="library/$($artist.Name)/$type/$($folder.Name)/$name";Path=$source}
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+function Write-PkBackupBytes([string]$Path,[byte[]]$Bytes) {
+    Assert-SafePath $Path
+    [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($Path))
+    $temporary="$Path.$([guid]::NewGuid().ToString('N')).tmp"
+    try {
+        [IO.File]::WriteAllBytes($temporary,$Bytes)
+        if ([IO.File]::Exists($Path)) { [IO.File]::Replace($temporary,$Path,[NullString]::Value) }
+        else { [IO.File]::Move($temporary,$Path) }
+    } finally { [IO.File]::Delete($temporary) }
+}
+
 function Save-ConfigurationBackup([string]$Path) {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     Assert-SafePath $Path
-    $temporary = "$Path.$([guid]::NewGuid().ToString('N')).tmp"
+    $temporary="$Path.$([guid]::NewGuid().ToString('N')).tmp"
     try {
-        $zip = [IO.Compression.ZipFile]::Open($temporary, 'Create')
+        $zip=[IO.Compression.ZipFile]::Open($temporary,'Create')
         try {
-            foreach ($name in @('dj-set-gui.json','downloaded.txt','dj-set-queue.json','dj-set-aliases.json','dj-set-local-library.json')) {
-                $source = Join-Path $config $name
-                Assert-SafePath $source
-                if ([IO.File]::Exists($source)) {
-                    [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $source, "config/$name")
-                } elseif ($name -eq 'dj-set-gui.json') {
-                    $writer = [IO.StreamWriter]::new($zip.CreateEntry("config/$name").Open(), $utf8)
-                    try { $writer.Write((ConvertTo-Json -InputObject $settings)) } finally { $writer.Dispose() }
-                }
+            $writer=[IO.StreamWriter]::new($zip.CreateEntry('backup-format.json').Open(),$utf8)
+            try { $writer.Write('{"version":2}') } finally { $writer.Dispose() }
+            $files=@(Get-PkBackupFiles $settings.MusicRoot)
+            $total=0L
+            if ($files.Count -gt 49998) { throw 'Zu viele Dateien für eine Sicherung.' }
+            foreach ($file in $files) {
+                Assert-SafePath $file.Path
+                $length=[IO.FileInfo]::new($file.Path).Length
+                $total+=$length
+                if ($length -gt 20MB -or $total -gt 511MB) { throw "Datei oder Gesamtumfang zu groß für die Sicherung: $($file.Path)" }
+                [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip,$file.Path,$file.Name)
+            }
+            if ('config/dj-set-gui.json' -notin $files.Name) {
+                $writer=[IO.StreamWriter]::new($zip.CreateEntry('config/dj-set-gui.json').Open(),$utf8)
+                try { $writer.Write((ConvertTo-Json -InputObject $settings)) } finally { $writer.Dispose() }
             }
         } finally { $zip.Dispose() }
-        if ([IO.File]::Exists($Path)) { [IO.File]::Replace($temporary, $Path, [NullString]::Value) }
-        else { [IO.File]::Move($temporary, $Path) }
+        if ([IO.File]::Exists($Path)) { [IO.File]::Replace($temporary,$Path,[NullString]::Value) }
+        else { [IO.File]::Move($temporary,$Path) }
     } finally { [IO.File]::Delete($temporary) }
 }
 
 function Restore-ConfigurationBackup([string]$Path) {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     Assert-SafePath $Path
-    $names = @('dj-set-gui.json','downloaded.txt','dj-set-queue.json','dj-set-aliases.json','dj-set-local-library.json')
-    $data = @{}
-    $zip = [IO.Compression.ZipFile]::OpenRead($Path)
+    $names=@('dj-set-gui.json','downloaded.txt','dj-set-queue.json','dj-set-aliases.json','dj-set-local-library.json','dj-set-library-state.json')
+    $data=@{}
+    $zip=[IO.Compression.ZipFile]::OpenRead($Path)
     try {
+        $total=0L
         foreach ($entry in $zip.Entries) {
-            $name = $entry.Name
-            if ($name -cnotin $names -or $entry.FullName -cne "config/$name" -or $data.ContainsKey($name) -or $entry.Length -gt 16MB) {
-                throw 'Ungültiger Eintrag in der Konfigurationssicherung.'
+            $name=$entry.FullName
+            $allowed=$name -ceq 'backup-format.json' -or
+                ($name.StartsWith('config/') -and ($entry.Name -cin $names -or $entry.Name -cin @('set-resume.json','health-options.json') -or
+                $entry.Name -cmatch '^(?:tracklist-[0-9A-F]{64}\.json|cover-[0-9A-F]{64}\.jpg)$') -and $name -ceq "config/$($entry.Name)") -or
+                $name -cmatch '^library/[^/\\:]+/(?:Sets|Tracks)/[^/\\:]+/plattenkoffer(?:-tracklist\.json|-cover\.jpg|\.json)$'
+            $total+=$entry.Length
+            if (!$allowed -or $data.ContainsKey($name) -or $entry.Length -gt 20MB -or $total -gt 512MB -or $data.Count -ge 50000) {
+                throw 'Ungültiger oder zu großer Eintrag in der Sicherung.'
             }
-            $reader = [IO.StreamReader]::new($entry.Open(), [Text.UTF8Encoding]::new($false,$true))
-            try { $data[$name] = $reader.ReadToEnd() } finally { $reader.Dispose() }
-            if ($name.EndsWith('.json')) { $null = ConvertFrom-Json -InputObject $data[$name] }
+            $stream=$entry.Open()
+            $memory=[IO.MemoryStream]::new()
+            try { $stream.CopyTo($memory); $bytes=$memory.ToArray() }
+            finally { $stream.Dispose(); $memory.Dispose() }
+            if ($name.EndsWith('.json')) { $null=ConvertFrom-Json -InputObject $utf8.GetString($bytes) }
+            $data[$name]=$bytes
         }
     } finally { $zip.Dispose() }
-    if (!$data.ContainsKey('dj-set-gui.json')) { throw 'Die Einstellungen fehlen im ZIP.' }
-    $saved = ConvertFrom-Json -InputObject $data['dj-set-gui.json']
-    if ($saved.MusicRoot -notmatch '^(?:[A-Za-z]:[\\/]|\\\\[^\\]+\\[^\\]+)') {
-        throw 'Ungültige Einstellungen im ZIP.'
+    if (!$data.ContainsKey('config/dj-set-gui.json')) { throw 'Die Einstellungen fehlen im ZIP.' }
+    $modern=$data.ContainsKey('backup-format.json')
+    if ($modern -and (ConvertFrom-Json $utf8.GetString($data['backup-format.json'])).version -ne 2) { throw 'Unbekannte Sicherungsversion.' }
+    if (!$modern -and @($data.Keys | Where-Object { $_ -notin @($names | ForEach-Object {"config/$_"}) }).Count) {
+        throw 'Die Formatangabe der Sicherung fehlt.'
     }
-    $previous = @{}
-    foreach ($name in $names) {
-        $target = Join-Path $config $name
+    $saved=ConvertFrom-Json $utf8.GetString($data['config/dj-set-gui.json'])
+    if ($saved.MusicRoot -notmatch '^(?:[A-Za-z]:[\\/]|\\\\[^\\]+\\[^\\]+)') { throw 'Ungültige Einstellungen im ZIP.' }
+    $root=[IO.Path]::GetFullPath($saved.MusicRoot).TrimEnd('\','/')+'\'
+    Assert-SafePath $root
+    $targets=@{}
+    foreach ($name in $data.Keys) {
+        if ($name -eq 'backup-format.json') { continue }
+        if ($name.StartsWith('config/')) { $target=Join-Path $config $name.Substring(7) }
+        else {
+            $relative=$name.Substring(8)
+            foreach ($part in $relative.Split('/')) {
+                if ($part -in @('.','..') -or $part.TrimEnd(' ','.') -cne $part -or $part.IndexOfAny([IO.Path]::GetInvalidFileNameChars()) -ge 0) {
+                    throw 'Ungültiger Sammlungspfad im ZIP.'
+                }
+            }
+            $target=[IO.Path]::GetFullPath((Join-Path $root $relative))
+            if (!$target.StartsWith($root,[StringComparison]::OrdinalIgnoreCase)) { throw 'Ungültiger Sammlungspfad im ZIP.' }
+        }
         Assert-SafePath $target
-        if ([IO.File]::Exists($target)) { $previous[$name] = [IO.File]::ReadAllText($target,$utf8) }
+        if ($targets.ContainsKey($target)) { throw 'Doppeltes Sicherungsziel.' }
+        $targets[$target]=$data[$name]
     }
-    $backup = Join-Path (Split-Path -Parent $config) ("Vor-Wiederherstellung-$([guid]::NewGuid()).zip")
+    # Old ZIPs replace only their original six config files. New optional data is preserved.
+    foreach ($name in $names) {
+        $target=Join-Path $config $name
+        if (!$targets.ContainsKey($target)) { $targets[$target]=$null }
+    }
+    $previous=@{}
+    foreach ($target in $targets.Keys) {
+        Assert-SafePath $target
+        $previous[$target]=if ([IO.File]::Exists($target)) { ,([IO.File]::ReadAllBytes($target)) } else { $null }
+    }
+    $backup=Join-Path (Split-Path -Parent $config) ("Vor-Wiederherstellung-$([guid]::NewGuid()).zip")
     Save-ConfigurationBackup $backup
-    $changed = [Collections.Generic.List[string]]::new()
+    $changed=[Collections.Generic.List[string]]::new()
     try {
-        foreach ($name in $names) {
-            $target = Join-Path $config $name
-            if ($data.ContainsKey($name)) { Write-AtomicText $target $data[$name] }
+        foreach ($target in $targets.Keys) {
+            $changed.Add($target)
+            if ($null -ne $targets[$target]) { Write-PkBackupBytes $target $targets[$target] }
             else { [IO.File]::Delete($target) }
-            $changed.Add($name)
         }
     } catch {
-        $failure = $_
+        $failure=$_
         try {
-            foreach ($name in $changed) {
-                $target = Join-Path $config $name
-                if ($previous.ContainsKey($name)) { Write-AtomicText $target $previous[$name] }
+            foreach ($target in $changed) {
+                if ($null -ne $previous[$target]) { Write-PkBackupBytes $target $previous[$target] }
                 else { [IO.File]::Delete($target) }
             }
         } catch { throw "Rückgängig fehlgeschlagen. Sicherung: $backup. $($_.Exception.Message)" }
@@ -815,7 +913,6 @@ function Restore-ConfigurationBackup([string]$Path) {
     }
     return $backup
 }
-
 $preferences.Add_Click({
     if ($libraryView.OpenPage -and (& $libraryView.OpenPage 'settings')) { return }
     $dialog = [Windows.Forms.Form]@{
@@ -848,7 +945,8 @@ $preferences.Add_Click({
             $path = [IO.Path]::GetFullPath($path)
             Assert-SafePath $path
             [void][IO.Directory]::CreateDirectory($path)
-            $newSettings = @{ MusicRoot = $path; Theme = [string]$theme.SelectedItem }
+            $newSettings = $settings.Clone()
+            $newSettings.MusicRoot=$path; $newSettings.Theme=[string]$theme.SelectedItem
             Write-AtomicText $settingsPath (ConvertTo-Json -InputObject $newSettings)
             $settings.MusicRoot = $path
             $destination.Text = "Downloadordner: $path"
@@ -878,7 +976,7 @@ $preferences.Add_Click({
         $picker = [Windows.Forms.OpenFileDialog]@{ Filter='ZIP-Archiv (*.zip)|*.zip' }
         try {
             if ($picker.ShowDialog($dialog) -ne 'OK') { return }
-            if ([Windows.Forms.MessageBox]::Show($dialog,'Das ZIP ersetzt die aktuelle Konfiguration und Plattenkoffer wird danach geschlossen. Fortfahren?','Konfiguration wiederherstellen','YesNo','Question','Button2') -ne 'Yes') { return }
+            if ([Windows.Forms.MessageBox]::Show($dialog,'Das ZIP ersetzt die Konfiguration und stellt enthaltene Tracklisten, eigene Cover und Fortsetzungspositionen wieder her. Sammlungsdaten werden in den im ZIP gespeicherten Musikordner geschrieben. Audiodateien sind nicht enthalten. Vorher wird eine Sicherung angelegt. Plattenkoffer wird danach geschlossen. Fortfahren?','Konfiguration wiederherstellen','YesNo','Question','Button2') -ne 'Yes') { return }
             $previous = Restore-ConfigurationBackup $picker.FileName
             [void][Windows.Forms.MessageBox]::Show($dialog,"Bitte Plattenkoffer neu starten. Vorherige Konfiguration: $previous",'Konfiguration wiederherstellen')
             $dialog.DialogResult = 'Retry'
@@ -889,7 +987,7 @@ $preferences.Add_Click({
     $downloadsTab = [Windows.Forms.TabPage]@{ Text='Downloads' }
     $appearanceTab = [Windows.Forms.TabPage]@{ Text='Darstellung' }
     $backupTab = [Windows.Forms.TabPage]@{ Text='Sicherung' }
-    $backupLabel = [Windows.Forms.Label]@{ Text='Einstellungen und Warteschlange als ZIP sichern oder wiederherstellen.'; Left=12; Top=16; AutoSize=$true }
+    $backupLabel = [Windows.Forms.Label]@{ Text='ZIP mit Einstellungen, Fortsetzungspositionen, Tracklisten und eigenen Covern. Ohne Audio.'; Left=12; Top=16; AutoSize=$true }
     $pathBox.Width = 480
     $pathBox.AccessibleName = 'Downloadordner'
     $browse.Left = 503
@@ -1026,7 +1124,7 @@ function Get-SetAudio([string]$Path) {
         Get-Item -LiteralPath $Path
         return
     }
-    Get-ChildItem -LiteralPath $Path -File | Where-Object Extension -in @('.mp3','.opus','.m4a','.aac','.flac','.wav','.ogg','.webm') |
+    Get-ChildItem -LiteralPath $Path -File | Where-Object { $_.Extension -in @('.mp3','.opus','.m4a','.aac','.flac','.wav','.ogg','.webm') -and $_.BaseName -notmatch '(?i)(?:^audio_repaired$|\.tmp(?:\.|$)|\.pk-health-)' } |
         Sort-Object @{ Expression = {
             [regex]::Replace($_.Name, '[0-9]+', { param($number) $number.Value.PadLeft(20, '0') })
         } }, Name
@@ -1063,9 +1161,10 @@ function Get-LibrarySets([string]$Root) {
                     if ([IO.File]::Exists($metadataPath)) {
                         try {
                             $metadata = [IO.File]::ReadAllText($metadataPath, $utf8) | ConvertFrom-Json
-                            foreach ($field in @('Artist','Title','Series','Event','Location','Album','Year','Date','SetNameOverride')) {
+                            foreach ($field in @('Artist','Title','Series','Event','Location','Album','Year','Label','Version','Genre','Date','SetNameOverride')) {
                                 if ($metadata.$field -is [string]) { $item | Add-Member NoteProperty $field $metadata.$field -Force }
                             }
+                            if ($metadata.MetadataSources) { $item | Add-Member NoteProperty MetadataSources $metadata.MetadataSources }
                         } catch { Write-Warning "Einordnung konnte nicht gelesen werden: $metadataPath" }
                     }
                     $item
@@ -1086,7 +1185,7 @@ function Read-LocalLibrary {
 }
 
 function Save-LocalLibrary($Entries) {
-    Write-AtomicText $localLibraryPath (ConvertTo-Json -InputObject @($Entries) -Depth 4)
+    Write-AtomicText $localLibraryPath (ConvertTo-Json -InputObject @($Entries) -Depth 6)
 }
 
 function Add-LocalLibraryFiles([string]$Root, [string[]]$Paths) {
@@ -1138,6 +1237,9 @@ function Edit-LibraryMetadata($Owner, $Entry) {
         try {
             $metadata = [ordered]@{}
             foreach ($field in $fields.Keys) { $metadata[$field] = $inputs[$field].Text.Trim() }
+            foreach ($field in @('Album','Year','Label','Version','Genre','Date','SetNameOverride','MetadataSources')) {
+                if ($Entry.PSObject.Properties[$field]) { $metadata[$field]=$Entry.$field }
+            }
             if ($Entry.External) {
                 $metadata.Path = $Entry.Path
                 $metadata.Type = [string]$typeBox.SelectedItem
@@ -1147,7 +1249,7 @@ function Edit-LibraryMetadata($Owner, $Entry) {
                 })
                 Save-LocalLibrary $entries
             } else {
-                Write-AtomicText (Join-Path $Entry.Path 'plattenkoffer.json') (ConvertTo-Json $metadata)
+                Write-AtomicText (Join-Path $Entry.Path 'plattenkoffer.json') (ConvertTo-Json $metadata -Depth 6)
             }
             $window.DialogResult = 'OK'
         } catch { [void][Windows.Forms.MessageBox]::Show($window, $_.Exception.Message, 'Einordnung bearbeiten') }
@@ -1394,7 +1496,7 @@ function Show-Library {
     $playerBar.Controls.Add($seekBar,4,0)
     $playerBar.SetRowSpan($seekBar,2)
     $volume = [Windows.Forms.TrackBar]@{ Dock='Fill'; TickStyle='None'; Maximum=100; AccessibleName='Lautstärke' }
-    $volume.Value = 80
+    $volume.Value = $settings.StartVolume
     $playerBar.Controls.Add($volume,5,0)
     $playerBar.SetRowSpan($volume,2)
     $actionTips.SetToolTip($volume,'Lautstärke')
@@ -1431,29 +1533,30 @@ function Show-Library {
         $audio.Clock.Restart()
         Set-ActionIcon $transport 0xE769 'Pause'
     }
-    function Open-LibraryAudioPart {
+    function Open-LibraryAudioPart([double]$InitialOffset=0) {
         $track = $audio.Tracks[$audio.Index]
         Assert-SafePath $track.FullName
         $seconds = & $probe -v error -show_entries format=duration -of 'csv=p=0' $track.FullName
         $duration = 0.0
         $known = $LASTEXITCODE -eq 0 -and [double]::TryParse([string]$seconds,[Globalization.NumberStyles]::Float,[Globalization.CultureInfo]::InvariantCulture,[ref]$duration) -and $duration -gt 0 -and $duration -lt [int]::MaxValue
         $audio.Duration = if ($known) { $duration } else { 0.0 }
-        $audio.Offset=0.0
+        $audio.Offset=if ($known -and $InitialOffset -ge $duration) { 0.0 } else { [Math]::Max(0.0,$InitialOffset) }
         $seekBar.Value=0
         $seekBar.Maximum=[Math]::Max(1,[int][Math]::Ceiling($audio.Duration))
         $seekBar.Enabled=$known
         $nowPlaying.Text=if ($audio.Tracks.Count -gt 1) { "$($audio.Title) · Teil $($audio.Index+1)/$($audio.Tracks.Count)" } else { $audio.Title }
         Resume-LibraryAudio
     }
-    function Start-LibraryPlayback([string]$Path,[string]$Title) {
+    function Start-LibraryPlayback([string]$Path,[string]$Title,[int]$Part=0,[double]$Offset=0) {
         Assert-SafePath $Path
         $tracks = @(Get-SetAudio $Path)
         if (!$tracks.Count) { throw 'Keine Audiodateien gefunden.' }
+        if ($Part -lt 0 -or $Part -ge $tracks.Count) { throw 'Dieser Teil des Sets ist nicht verfügbar.' }
         Stop-LibraryPlayback
         $audio.Tracks=$tracks
-        $audio.Index=0
+        $audio.Index=$Part
         $audio.Title=$Title
-        try { Open-LibraryAudioPart }
+        try { Open-LibraryAudioPart $Offset }
         catch { Stop-LibraryPlayback; throw }
         $transport.Enabled=$endPlayback.Enabled=$true
         $audioTimer.Start()
@@ -1467,7 +1570,12 @@ function Show-Library {
             if ($audio.Process -and $audio.Process.HasExited) {
                 if ($audio.Process.ExitCode -ne 0) { throw "Wiedergabe fehlgeschlagen (Code $($audio.Process.ExitCode))." }
                 $audio.Index++
-                if ($audio.Index -ge $audio.Tracks.Count) { Stop-LibraryPlayback; return }
+                if ($audio.Index -ge $audio.Tracks.Count) {
+                    Save-WebSetPosition -Forget
+                    Stop-LibraryPlayback
+                    [void](Step-WebPlaybackQueue -Automatic)
+                    return
+                }
                 Open-LibraryAudioPart
             }
             $elapsed=$audio.Offset + $(if ($audio.Process) { $audio.Clock.Elapsed.TotalSeconds } else { 0 })
@@ -1492,7 +1600,7 @@ function Show-Library {
     }
     $seekBar.Add_MouseUp($seekAction)
     $seekBar.Add_KeyUp($seekAction)
-    $volumeChanged = {
+    $volumeChangedAction = {
         if ($audio.Process) {
             Invoke-LibraryAudioAction {
                 $audio.Offset += $audio.Clock.Elapsed.TotalSeconds
@@ -1500,9 +1608,9 @@ function Show-Library {
             }
         }
     }
-    $volume.Add_MouseUp($volumeChanged)
-    $volume.Add_KeyUp($volumeChanged)
-    $endPlayback.Add_Click({ Stop-LibraryPlayback })
+    $volume.Add_MouseUp($volumeChangedAction)
+    $volume.Add_KeyUp($volumeChangedAction)
+    $endPlayback.Add_Click({ if ($web.Queue) { $web.Queue.Paths=@() }; Stop-LibraryPlayback })
     $panel = [Windows.Forms.TableLayoutPanel]@{ Dock = 'Fill'; RowCount = 5; ColumnCount = 1; Padding = [Windows.Forms.Padding]::new(12) }
     foreach ($height in @(56, 1, 56, 0, 43)) {
         $style = if ($height) { [Windows.Forms.RowStyle]::new('Absolute', $height) }
@@ -1873,10 +1981,33 @@ function Show-Library {
             Commands=[Collections.Generic.Queue[object]]::new(); Dispatching=$false
             Export=@{Worker=$null;Handle=$null}
             Conversion=@{Worker=$null;Handle=$null;Files=@();Status='';Report=''}
+            TransitionScan=@{Worker=$null;Handle=$null;Id='';Titles=@()}
+            Metadata=@{Worker=$null;Handle=$null;Id='';Candidates=@{};Proposals=@{};LastRequest=[datetime]::MinValue}
             Initializing=[IO.File]::Exists((Join-Path $PSScriptRoot 'Microsoft.Web.WebView2.Core.dll'))
         }
+        $resumePositionsPath=Join-Path $config 'set-resume.json'
+        $web.Resume=@{}
+        $web.NextResumeSave=[datetime]::UtcNow
+        if ([IO.File]::Exists($resumePositionsPath)) {
+            try {
+                Assert-SafePath $resumePositionsPath
+                $positions=ConvertFrom-Json -InputObject ([IO.File]::ReadAllText($resumePositionsPath,$utf8))
+                foreach ($property in $positions.PSObject.Properties) { $web.Resume[$property.Name]=$property.Value }
+            } catch { Write-Verbose $_.Exception.Message }
+        }
         . (Join-Path $PSScriptRoot 'DJ-Sets-WebCollection.ps1')
+        . (Join-Path $PSScriptRoot 'DJ-Sets-Covers.ps1')
         . (Join-Path $PSScriptRoot 'DJ-Sets-Convert.ps1')
+        . (Join-Path $PSScriptRoot 'DJ-Sets-Tracklist.ps1')
+        . (Join-Path $PSScriptRoot 'DJ-Sets-Transitions.ps1')
+        . (Join-Path $PSScriptRoot 'DJ-Sets-Metadata.ps1')
+        . (Join-Path $PSScriptRoot 'DJ-Sets-LibraryActions.ps1')
+        . (Join-Path $PSScriptRoot 'DJ-Sets-Health.ps1')
+        . (Join-Path $PSScriptRoot 'DJ-Sets-HealthRepair.ps1')
+        . (Join-Path $PSScriptRoot 'DJ-Sets-HealthWeb.ps1')
+        Initialize-WebHealth
+        $libraryStatePath=Join-Path $config 'dj-set-library-state.json'
+        Initialize-PkLibraryState
         $libraryView.OpenPage = {
             param($Page)
             if (!$web.Ready) { return $false }
@@ -1893,10 +2024,17 @@ function Show-Library {
                     Invoke-WebCollectionCommand ($web.Commands.Dequeue())
                 }
                 Send-WebPlayer
+                if ([datetime]::UtcNow -ge $web.NextResumeSave) {
+                    Save-WebSetPosition
+                    $web.NextResumeSave=[datetime]::UtcNow.AddSeconds(8)
+                }
                 Send-WebDownloads
                 Complete-WebDiagnostic
                 Complete-WebExport
                 Complete-WebConversion
+                Complete-WebTransitionScan
+                Complete-WebMetadata
+                Complete-WebHealth
             } catch {
                 [void][Windows.Forms.MessageBox]::Show($form,$_.Exception.Message,'Plattenkoffer')
             } finally { $web.Dispatching=$false }
@@ -1911,8 +2049,12 @@ function Show-Library {
         if ($webTimer) { $webTimer.Dispose() }
         if ($web.Export.Worker) { $web.Export.Worker.Dispose() }
         if ($web.Conversion.Worker) { $web.Conversion.Worker.Dispose() }
+        if ($web.TransitionScan.Worker) { $web.TransitionScan.Worker.Dispose() }
+        if ($web.Metadata.Worker) { $web.Metadata.Worker.Dispose() }
+        if ($web.Health.Worker) { $web.Health.Control.Cancel=$true; $web.Health.Worker.Dispose() }
         if ($libraryView.Diagnostic.Worker) { $libraryView.Diagnostic.Worker.Dispose() }
         if (Get-Command Clear-LibraryCovers -CommandType Function -ErrorAction SilentlyContinue) { Clear-LibraryCovers }
+        if (Get-Command Save-WebSetPosition -CommandType Function -ErrorAction SilentlyContinue) { Save-WebSetPosition }
         Stop-LibraryPlayback
         $audioTimer.Dispose()
         $addMenu.Dispose(); $helpActions.Dispose(); $headingFont.Dispose(); $brandFont.Dispose()
@@ -2030,7 +2172,7 @@ $diagnose.Add_Click({
 
 $form.Add_FormClosing({
     param($sender, $eventArgs)
-    if ($state.Worker -or $libraryView.Diagnostic.Worker -or $web.Export.Worker -or $web.Conversion.Worker) { $eventArgs.Cancel = $true; $status.Text = 'Ein Vorgang läuft noch. Das Fenster kann danach geschlossen werden.' }
+    if ($state.Worker -or $libraryView.Diagnostic.Worker -or $web.Export.Worker -or $web.Conversion.Worker -or $web.TransitionScan.Worker -or $web.Health.Worker) { $eventArgs.Cancel = $true; $status.Text = 'Ein Vorgang läuft noch. Das Fenster kann danach geschlossen werden.' }
 })
 Set-WindowTheme $form
 $updateCheck = @{ Worker=$null; Handle=$null; Manual=$false; Url=''; AssetUrl=''; Version=$null; Installer=''; Phase='Check' }
@@ -2057,7 +2199,7 @@ function Start-UpdateCheck([bool]$Manual) {
 
 $updateTimer.Add_Tick({
     if (!$updateCheck.Handle.IsCompleted) { return }
-    if ($updateCheck.Phase -eq 'Download' -and ($state.Worker -or $libraryView.Diagnostic.Worker -or $web.Export.Worker -or $web.Conversion.Worker)) {
+    if ($updateCheck.Phase -eq 'Download' -and ($state.Worker -or $libraryView.Diagnostic.Worker -or $web.Export.Worker -or $web.Conversion.Worker -or $web.TransitionScan.Worker -or $web.Health.Worker)) {
         $updateNotice.Text = 'Update wartet auf laufenden Vorgang …'
         return
     }

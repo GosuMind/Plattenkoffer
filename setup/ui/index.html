@@ -8,21 +8,67 @@
 </head>
 <body style="margin:0;background:#1c1b19">
 <section id="pk-concept" lang="de">
-  <aside><strong>Plattenkoffer</strong><nav aria-label="Bibliothek"><button data-kind="">Sammlung</button><button data-kind="Set">Sets</button><button data-kind="Track">Tracks</button><button data-command="downloads">Downloads</button><button data-command="settings">Einstellungen</button><button data-help>Hilfe</button><button data-command="update" hidden>Update verfügbar</button></nav></aside>
+  <aside><strong>Plattenkoffer</strong><nav aria-label="Bibliothek"><button data-kind="">Sammlung</button><button data-kind="Set">Sets</button><button data-kind="Track">Tracks</button><button data-favorites>♥ Favoriten</button><button data-open-playlists>Playlisten</button><button data-command="downloads">Downloads</button><button data-command="settings">Einstellungen</button><button data-help>Hilfe</button><button data-command="update" hidden>Update verfügbar</button></nav></aside>
   <main data-collection>
-    <header><h1>Sammlung</h1><input type="search" placeholder="Sammlung durchsuchen …" aria-label="Sammlung durchsuchen"><button class="hot" data-add>＋ Hinzufügen</button><button class="support" data-command="support" aria-label="Auf Ko-fi unterstützen" title="Auf Ko-fi unterstützen">♥</button></header>
-    <div class="toolbar"><div data-filters></div><div class="views"><button data-view="cover">▦ Cover</button><button data-view="list">☰ Liste</button></div></div>
+    <header class="collection-header"><h1>Sammlung</h1><input type="search" placeholder="Sammlung durchsuchen …" aria-label="Sammlung durchsuchen"><button class="hot" data-add>＋ Hinzufügen</button><button class="support" data-command="support" aria-label="Auf Ko-fi unterstützen" title="Auf Ko-fi unterstützen">♥ Spenden</button></header>
+    <div class="toolbar"><div class="filter-access"><button data-filter-toggle aria-expanded="false" aria-controls="collection-filters">Filter</button><div data-filters id="collection-filters" hidden></div></div><div data-filter-chips aria-label="Aktive Filter"></div><div class="views"><details class="display-options"><summary title="Ansicht anpassen">Ansicht</summary><div><label class="tile-size">Kachelgröße<input data-tile-size type="range" min="96" max="420" step="12" value="180" aria-label="Kachelgröße"></label><button type="button" data-select-all-menu>Alle sichtbaren auswählen</button></div></details><button data-view="cover" title="Coveransicht" aria-label="Coveransicht">▦</button><button data-view="list" title="Listenansicht" aria-label="Listenansicht">☰</button></div></div>
+    <div class="playlist-toolbar"><label>Playlist<select data-active-playlist aria-label="Playlist anzeigen"><option value="">Alle Titel</option></select></label><button type="button" data-play-active-list disabled>Playlist abspielen</button><button type="button" data-exit-favorites hidden>Alle Titel anzeigen</button></div>
     <p class="muted" data-count role="status"></p>
+    <div class="selection-actions"><button type="button" data-select-visible>Sichtbare auswählen</button><button type="button" data-clear-selection disabled>Auswahl aufheben</button><span data-selection-count>0 ausgewählt</span><button type="button" data-bulk-metadata disabled>Metadaten prüfen</button><button type="button" data-selection-playlist disabled>Zur Playlist</button><button type="button" data-bulk-delete disabled aria-label="Auswahl löschen">🗑 Auswahl löschen</button></div>
+    <p class="muted" data-library-status role="status"></p>
     <div class="library"><div data-results></div><section data-detail aria-label="Eintragsdetails"></section></div>
+  </main>
+  <main data-health hidden>
+    <header><div><p class="muted">PLATTENKOFFER · LIBRARY HEALTH &amp; REPAIR CENTER</p><h1>Bibliothekspflege</h1></div></header>
+    <p class="health-intro">Musik prüfen, Metadaten vergleichen und Änderungen vor dem Übernehmen kontrollieren. Der Scan verändert keine Musikdateien.</p>
+    <nav class="health-tabs" aria-label="Bereiche der Bibliothekspflege">
+      <button data-health-tab="overview" aria-pressed="true">Übersicht</button><button data-health-tab="scan">Bibliotheksscan</button><button data-health-tab="metadata">Metadaten</button><button data-health-tab="covers">Cover-Manager</button><button data-health-tab="integrity">Audiointegrität</button><button data-health-tab="quality">Audioqualität</button><button data-health-tab="duplicates">Duplikate</button><button data-health-tab="paths">Dateistruktur</button><button data-health-tab="vdj">VirtualDJ / Poweramp</button><button data-health-tab="repairs">Reparaturen</button><button data-health-tab="backups">Backup &amp; Restore</button><button data-health-tab="reports">Protokolle</button>
+    </nav>
+    <section class="settings-group health-options"><details><summary>Ordner, Werkzeuge und Scanoptionen</summary><form data-health-options>
+      <label>Bibliotheksordner<input name="Root" required></label><label>FFprobe<input name="Probe" required></label><label>FFmpeg<input name="FFmpeg" required></label><label>Berichte und Checkpoints außerhalb der Musikbibliothek<input name="Storage" required></label><label>Reparaturbackups außerhalb der Musikbibliothek<input name="BackupRoot" required></label><label>Backup-Speicherlimit in GB (0 = unbegrenzt)<input name="BackupLimitGB" type="number" min="0" max="100000" value="20" required></label><label>Entfernbare Videozusätze, mit Komma trennen<input name="VideoSuffixes"></label><p class="muted">Backups werden nicht automatisch gelöscht. Speicherverbrauch vor jeder Freigabe prüfen. Netzwerkpfade sind für Reparaturen noch nicht freigegeben.</p><button type="submit">Pflege-Einstellungen speichern</button>
+    </form></details></section>
+    <div class="entry-actions health-scan-actions"><label class="check-line"><input data-health-deep type="checkbox">Tiefenscan mit vollständiger Dekodierung</label><button class="hot" data-health-full>Vollständig scannen</button><button data-health-incremental>Inkrementell / fortsetzen</button><button data-health-cancel disabled>Abbrechen</button></div>
+    <p data-health-status role="status" aria-live="polite"></p><p data-health-current class="muted"></p><progress data-health-progress max="100" value="0" hidden aria-label="Fortschritt der Bibliothekspflege"></progress>
+    <div data-health-summary class="health-metrics"></div><p data-health-score class="muted"></p><p data-health-warning class="muted"></p>
+    <section data-health-vdj hidden class="settings-group"><h2>Tags vorhanden, Anzeige veraltet?</h2><p>PK liest und bearbeitet keine VirtualDJ-Datenbank. Vorhandene Tags werden nicht allein wegen einer fremden Anzeige neu geschrieben. Die folgenden Dateien besitzen Interpret und Titel; ob VirtualDJ veraltete Werte verwendet, ist ohne Abgleich dort nicht festgestellt.</p><ol><li>Die betroffenen Dateien in VirtualDJ auswählen.</li><li>Bei mehreren Dateien im Kontextmenü „Batch → Reload tags“ verwenden.</li><li>Bei einer einzelnen Datei den Tag Editor öffnen und abweichende Werte feldweise aus dem Dateitag übernehmen.</li><li>Anzeige und Wiedergabe kontrollieren. Datenbank, Cues und Beatgrids nicht löschen.</li></ol><p>Poweramp: Nach einer bestätigten Reparatur die betroffenen Ordner im Player erneut einlesen und Titel, Interpret sowie Cover kontrollieren. Die Wiedergabe in externen Programmen ist separat zu prüfen.</p></section>
+    <section data-health-quality-note hidden class="settings-group"><h2>Qualität verständlich einordnen</h2><p>Codec, Bitrate, Abtastrate und Dateigröße beschreiben die vorhandene Datei. Bitraten verschiedener Codecs sind nicht unmittelbar vergleichbar. Hohe Werte belegen keine hochwertige Originalquelle. Die Bibliothekspflege konvertiert kein Audio und wertet Dateien nicht künstlich auf.</p></section>
+    <section data-health-library>
+      <div class="health-controls"><input data-health-search type="search" placeholder="Pfad, Interpret oder Titel suchen" aria-label="Scanergebnisse durchsuchen"><select data-health-filter aria-label="Scanergebnisse filtern"><option value="all">Alle Dateien</option><option value="HEALTHY">Fehlerfrei, vollständig geprüft</option><option value="Track">Nur Tracks</option><option value="Set">Nur Sets</option><option value="missing">Fehlende Audio-Tags</option><option value="MISSING_JSON">Fehlendes PK-JSON</option><option value="INVALID_JSON">Fehlerhaftes JSON</option><option value="conflicts">Metadatenkonflikte</option><option value="MISSING_COVER">Fehlende Cover</option><option value="duplicates">Duplikate</option><option value="AUDIO_ERROR">Technisch auffällig</option><option value="vdj">Tags vorhanden / Anzeige extern prüfen</option><option value="MANUAL_REVIEW">Manuelle Prüfung</option></select></div>
+      <div class="entry-actions"><button data-health-select>Gefilterte auswählen</button><button data-health-clear>Auswahl aufheben</button><span data-health-selected>0 ausgewählt</span><button data-health-batch>Vorschau für fehlende Tags</button><button data-health-json>Vorschau für JSON-Rekonstruktion</button></div>
+      <p class="muted">Stapelvorschläge ergänzen ausschließlich fehlenden Interpret/Titel ohne erkannten Quellenkonflikt. Andere Änderungen einzeln prüfen. Generische Dateinamen und fehlende eingebettete Cover sind Hinweise, keine Defektmeldung.</p>
+      <div class="health-table" tabindex="0" aria-label="Scanergebnisse"><table><thead><tr><th>Auswahl</th><th>Interpret</th><th>Titel</th><th>Version</th><th>Album</th><th>Genre</th><th>Jahr</th><th>Format / Codec</th><th>Bitrate</th><th>Dauer</th><th>Abtastrate / Kanäle</th><th>Größe</th><th>Cover</th><th>JSON / Metadaten</th><th>Integrität</th><th>Pfad</th><th>Aktion</th></tr></thead><tbody data-health-rows></tbody></table></div>
+      <div class="entry-actions"><button data-health-prev>Vorherige</button><span data-health-page></span><button data-health-next>Nächste</button></div>
+    </section>
+    <section data-health-history hidden><h2>Reparaturaufträge und Ergebnisse</h2><div data-health-plans></div><p class="muted">Unterbrochene Aufträge nicht blind erneut ausführen. Bereits begonnene Reparaturen sind gegen doppelte Ausführung gesperrt. Betroffene Originale unter Backup &amp; Restore prüfen und vor einem neuen Plan erneut scannen.</p></section>
+    <section data-health-backups hidden><h2>Verifizierbare Originale</h2><p>Audio, vorhandene PK-/Quell-JSONs und Cover werden pro Reparatur außerhalb der Musikbibliothek gesichert. Eine Wiederherstellung benötigt eine eigene Vorschau und Freigabe. Spätere Dateiänderungen sperren das automatische Zurücksetzen.</p><p data-health-backup-usage></p><div data-health-backup-rows></div><button data-health-restore>Wiederherstellung der Auswahl prüfen</button></section>
+    <section data-health-reports hidden><h2>Berichte und Audit</h2><div class="entry-actions"><button data-health-export>Scanbericht als JSON / CSV exportieren …</button><button data-health-export-repairs>Reparaturberichte als JSON / CSV exportieren …</button><button data-health-open-reports>Berichtsordner öffnen</button></div><p>Der Berichtsordner enthält den fortsetzbaren Scan und die Reparaturpläne samt Ergebnissen. Vollständige Reparaturjournale einschließlich Backup-Dateihashes liegen bei den Originalbackups.</p></section>
   </main>
   <main data-settings hidden>
     <header><h1>Einstellungen</h1></header>
     <form data-settings-form>
       <section class="settings-group"><h2>Downloads</h2><label>Downloadordner <input name="folder" required></label><button type="button" data-command="settings-browse">Durchsuchen …</button></section>
       <section class="settings-group"><h2>Darstellung</h2><label>Farbschema <select name="theme"><option>System</option><option>Hell</option><option>Dunkel</option></select></label></section>
+      <section class="settings-group"><h2>Sammlung und Stil</h2>
+        <label>Akzentfarbe<select name="Accent"><option>Rost</option><option>Türkis</option><option>Blau</option><option>Violett</option></select></label>
+        <label>Kachelgröße<input name="TileSize" type="range" min="96" max="420" step="12" value="180"></label>
+        <label>Abstände<select name="Density"><option>Normal</option><option>Kompakt</option></select></label>
+        <label>Schriftgröße<input name="FontScale" type="range" min="90" max="125" step="5" value="100"></label>
+        <label>Startansicht<select name="DefaultView"><option value="auto">Zuletzt verwendet</option><option value="cover">Cover</option><option value="list">Liste</option></select></label>
+        <label>Sortierung<select name="Sort"><option value="artist">Künstler / DJ</option><option value="title">Titel</option><option value="year">Jahr, neueste zuerst</option></select></label>
+        <label class="check-line"><input name="ShowDetails" type="checkbox" checked>Detailspalte anzeigen</label>
+      </section>
+      <section class="settings-group"><h2>Wiedergabe</h2>
+        <label>Startlautstärke<input name="StartVolume" type="range" min="0" max="100" value="80"></label>
+        <label class="check-line"><input name="ResumeSets" type="checkbox" checked>Sets an gespeicherter Position fortsetzen</label>
+        <label class="check-line"><input name="AutoNext" type="checkbox">Nächsten Titel der Ansicht automatisch abspielen</label>
+        <label class="check-line"><input name="Shuffle" type="checkbox">Zufällige Wiedergabereihenfolge</label>
+        <label>Wiederholen<select name="Repeat"><option value="off">Aus</option><option value="all">Gesamte Wiedergabeliste</option><option value="one">Aktuellen Titel</option></select></label>
+        <label class="check-line"><input name="MiniTopMost" type="checkbox" checked>Mini-Player immer im Vordergrund</label>
+        <button type="button" data-command="mini-player">Mini-Player öffnen</button>
+      </section>
       <div><button class="hot" type="submit">Speichern</button></div>
     </form>
-    <section class="settings-group"><h2>Sicherung</h2><div class="entry-actions"><button data-command="settings-backup">Konfiguration sichern …</button><button data-restore>Konfiguration wiederherstellen …</button></div></section>
+    <section class="settings-group"><h2>Sicherung</h2><p>Die Sicherung enthält Einstellungen, Playlisten, Favoriten, Fortsetzungspositionen, Tracklisten und eigene Cover. Audiodateien separat sichern.</p><div class="entry-actions"><button data-command="settings-backup">Konfiguration sichern …</button><button data-restore>Konfiguration wiederherstellen …</button></div></section>
     <p class="muted" data-settings-status role="status"></p>
   </main>
   <main data-convert hidden>
@@ -46,6 +92,7 @@
   </main>
   <main data-downloads hidden>
     <header><h1>Downloads</h1><button data-add>＋ Hinzufügen</button></header>
+    <p class="usage-notice" data-usage-notice><strong>Bitte respektiere die Rechte der Urheber.</strong> Lade und verarbeite nur Inhalte, zu deren Nutzung du berechtigt bist. Beachte das geltende Recht, die Inhaltslizenzen und die Plattformbedingungen. Rechtswidrige Downloads, unbefugte Weitergabe und die unzulässige Umgehung wirksamer Schutzmaßnahmen sind zu unterlassen.</p>
     <form data-youtube>
       <label data-query-label>YouTube-Suche <input name="query" maxlength="200" placeholder="DJ, Track oder Set suchen"></label>
       <label data-links-label hidden>YouTube-Links <textarea name="links" rows="4" maxlength="16000" placeholder="Ein Link pro Zeile"></textarea></label>
@@ -57,7 +104,16 @@
     <div class="entry-actions"><button class="hot" data-command="download" disabled>Download starten</button><button data-command="cancel-download" disabled>Nach diesem Set stoppen</button><button data-command="resume-queue" disabled>Warteschlange fortsetzen</button><button data-command="retry-queue" disabled>Fehlgeschlagene erneut versuchen</button></div>
     <details data-download-log hidden><summary>Details zum Vorgang</summary><pre></pre></details>
   </main>
-  <footer><div data-now>Kein Titel ausgewählt</div><button data-toggle disabled aria-label="Wiedergabe starten">▶</button><div class="timeline"><input type="range" aria-label="Wiedergabeposition" value="0" max="1" disabled><small data-time>–</small></div><button data-command="stop" aria-label="Wiedergabe stoppen" disabled>■</button><label class="volume">Lautstärke<input data-volume type="range" min="0" max="100" value="80"></label></footer>
+  <footer><div data-now>Kein Titel ausgewählt</div><button data-command="player-previous" disabled aria-label="Vorheriger Titel" title="Vorheriger Titel">⏮</button><button data-toggle disabled aria-label="Wiedergabe starten">▶</button><button data-command="player-next" disabled aria-label="Nächster Titel" title="Nächster Titel">⏭</button><div class="timeline"><input type="range" aria-label="Wiedergabeposition" value="0" max="1" disabled><small data-time>–</small></div><button data-command="stop" aria-label="Wiedergabe stoppen" disabled>■</button><label class="volume">Lautstärke<input data-volume type="range" min="0" max="100" value="80"></label><button data-command="mini-player" data-mini-toggle aria-label="Mini-Player öffnen" title="Mini-Player öffnen">▣</button></footer>
+  <dialog data-playlists-dialog aria-labelledby="playlists-title"><form data-playlist-manager>
+    <header><h2 id="playlists-title">Playlisten</h2><button type="button" data-close-playlists aria-label="Schließen">×</button></header>
+    <label>Neue Playlist<input name="newName" maxlength="100" placeholder="Name der Playlist"></label><button type="button" data-playlist-create>Playlist erstellen</button>
+    <label>Playlist auswählen<select data-playlist-select></select></label>
+    <label>Name<input name="listName" maxlength="100"></label>
+    <div class="entry-actions"><button type="button" data-playlist-rename>Umbenennen</button><button type="button" data-playlist-add>Ausgewählte Titel hinzufügen</button><button type="button" data-playlist-play>Abspielen</button><button type="button" data-playlist-show>In Sammlung anzeigen</button><button type="button" data-playlist-delete>Playlist löschen</button></div>
+    <p class="muted">Eine Playlist verweist auf Titel deiner Sammlung. Ihre Reihenfolge lässt sich mit den Pfeilen ändern.</p>
+    <ol data-playlist-items></ol><p data-playlist-status role="status"></p>
+  </form></dialog>
   <dialog data-import-dialog><form method="dialog">
     <header><h2>Musik hinzufügen</h2><button aria-label="Schließen">×</button></header>
     <button type="button" data-command="youtube-search">YouTube-Suche</button>
@@ -66,6 +122,76 @@
     <button type="button" data-command="folders">Ordner einlesen …</button>
     <button type="button" data-command="copy">MP3s kopieren oder verschieben …</button>
   </form></dialog>
+  <dialog data-cover-dialog>
+    <header><h2>Cover ändern</h2><button type="button" data-cover-close aria-label="Schließen">×</button></header>
+    <img data-cover-preview alt="Vorschau des quadratischen Coverausschnitts" hidden>
+    <div class="entry-actions"><button type="button" data-cover-choose>Bild auswählen …</button><button type="button" data-cover-save class="hot" disabled>Cover speichern</button><button type="button" data-cover-reset hidden>Auf Original zurücksetzen</button></div>
+    <p data-cover-status role="status" class="muted"></p>
+  </dialog>
+  <dialog data-tracklist-dialog>
+    <header><h2>Trackliste</h2><button type="button" data-tracklist-close aria-label="Schließen">×</button></header>
+    <p data-tracklist-title class="muted"></p>
+    <div data-tracklist-rows></div>
+    <form data-tracklist-add>
+      <div class="edit"><label>Interpret <input name="artist" maxlength="300"></label><label>Tracktitel <input name="title" maxlength="300" placeholder="Unbekannt"></label></div>
+      <button type="submit" class="hot">An aktueller Position hinzufügen</button>
+    </form>
+    <details><summary>Vorhandene Trackliste importieren</summary>
+      <form data-tracklist-import><label>Trackliste (ein Track pro Zeile, Timecodes optional) <textarea name="text" rows="4" maxlength="12000" required placeholder="12:34 Interpret – Tracktitel"></textarea></label><button type="submit">Text importieren</button></form>
+      <button type="button" data-tracklist-description hidden>Aus YouTube-Beschreibung übernehmen</button>
+    </details>
+    <details data-scan-panel><summary>Timecodes lokal vorschlagen</summary>
+      <form data-tracklist-scan><label>Trackliste ohne Timecodes (optional, ein Track pro Zeile)<textarea name="text" rows="4" maxlength="10000" placeholder="Interpret – Tracktitel"></textarea></label><button type="submit">Set scannen</button></form>
+      <p data-scan-status class="muted" role="status"></p>
+      <form data-scan-review hidden>
+        <div data-scan-rows></div>
+        <div class="entry-actions"><button type="button" data-scan-add>Zeile ergänzen</button><button type="submit" class="hot">Trackliste speichern</button></div>
+      </form>
+    </details>
+    <p data-tracklist-status class="muted" role="status"></p>
+  </dialog>
+  <dialog data-playlist-dialog><form data-playlist-form>
+    <header><h2>YouTube-Playlist</h2><button type="button" data-close-playlist aria-label="Schließen">×</button></header>
+    <label><input type="checkbox" name="whole" checked> Ganze Playlist laden</label>
+    <p>Ohne Haken werden nur direkt verlinkte Videos geladen. Reine Playlist-Links werden übersprungen.</p>
+    <p>Nicht verfügbare Videos werden beim Laden übersprungen.</p>
+    <div class="actions"><button type="submit">Vorschau laden</button><button type="button" data-cancel-playlist>Abbrechen</button></div>
+  </form></dialog>
+  <dialog data-download-review-dialog aria-labelledby="download-review-title"><form data-download-review-form>
+    <header><h2 id="download-review-title">DJ prüfen</h2><button type="button" data-close-download-review aria-label="Schließen">×</button></header>
+    <p data-download-review-title></p>
+    <label>DJ / Künstler<input name="artist" required maxlength="300"></label>
+    <div class="entry-actions"><button class="hot" type="submit">Bestätigen und weiter</button><button type="button" data-skip-download-review>Überspringen</button><button type="button" data-close-download-review>Abbrechen</button></div>
+  </form></dialog>
+  <dialog data-delete-dialog aria-labelledby="delete-title"><form data-delete-form>
+    <header><h2 id="delete-title">Auswahl löschen</h2><button type="button" data-close-delete aria-label="Schließen">×</button></header>
+    <ul data-delete-items></ul>
+    <p data-delete-managed>Die Aufnahmeordner heruntergeladener Tracks und Sets werden mit allen enthaltenen Dateien in den Windows-Papierkorb verschoben.</p>
+    <label class="check-line" data-delete-originals><input type="checkbox" name="originals">Auch importierte Originaldateien in den Papierkorb verschieben</label>
+    <p data-delete-imported>Importierte Einträge werden aus der Sammlung entfernt. Mit dem Haken werden zusätzlich ihre Originaldateien in den Papierkorb verschoben.</p>
+    <p data-delete-status role="status"></p>
+    <div class="entry-actions"><button class="hot" type="submit">Auswahl löschen</button><button type="button" data-close-delete>Abbrechen</button></div>
+  </form></dialog>
+  <dialog data-metadata-dialog aria-labelledby="metadata-title">
+    <header><h2 id="metadata-title">Metadaten ergänzen</h2><button type="button" data-close-metadata aria-label="Schließen">×</button></header>
+    <p class="muted">Die Suche sendet Künstler und Titel an MusicBrainz. Wähle die passende Veröffentlichung und prüfe ihre Angaben.</p>
+    <p data-metadata-progress hidden></p>
+    <form data-metadata-search>
+      <div class="edit"><label>Künstler<input name="artist" required maxlength="300"></label><label>Tracktitel<input name="title" required maxlength="300"></label></div>
+      <button type="submit" class="hot">Bei MusicBrainz suchen</button>
+    </form>
+    <p data-metadata-status role="status" aria-live="polite"></p>
+    <div data-metadata-results></div>
+    <form data-metadata-apply hidden>
+      <h3>Vorschau</h3>
+      <p>Das Jahr gehört zur ausgewählten Veröffentlichung. Markierte Felder ersetzen die bisherigen Angaben in der Sammlung.</p>
+      <div class="metadata-comparison"><table><thead><tr><th>Übernehmen</th><th>Bisher</th><th>Vorschlag</th></tr></thead><tbody data-metadata-fields></tbody></table></div>
+      <button type="button" data-metadata-source>Quelle auf MusicBrainz öffnen</button>
+      <button type="button" data-metadata-genre-source hidden>Genre-Quelle auf MusicBrainz öffnen</button>
+      <button type="submit" class="hot" data-metadata-save disabled>Markierte Angaben übernehmen</button>
+    </form>
+    <button type="button" data-metadata-next hidden>Überspringen und nächsten Track prüfen</button>
+  </dialog>
   <dialog data-entry-dialog><form data-entry-form>
     <header><h2 data-entry-title></h2><button type="button" data-close-entry aria-label="Schließen">×</button></header>
     <div data-entry-fields class="edit"></div>
@@ -83,11 +209,12 @@
   </form></dialog>
   <dialog data-restore-dialog><form method="dialog">
     <h2>Konfiguration wiederherstellen</h2>
-    <p>Die ZIP-Sicherung ersetzt die aktuelle Konfiguration. Plattenkoffer wird anschließend geschlossen.</p>
+    <p>Die ZIP-Sicherung ersetzt die Konfiguration und stellt enthaltene Fortsetzungspositionen, Tracklisten und eigene Cover wieder her. Verwaltete Sammlungsdaten werden in den im ZIP gespeicherten Musikordner geschrieben. Audiodateien sind nicht enthalten. Vorher wird automatisch eine Sicherung angelegt. Plattenkoffer wird anschließend geschlossen.</p>
     <button type="button" class="hot" data-command="settings-restore">ZIP-Datei auswählen …</button>
     <button>Abbrechen</button>
   </form></dialog>
 </section>
+<datalist id="pk-genres"><option>Techno</option><option>Trance</option><option>House</option><option>Deep House</option><option>Progressive House</option><option>Hard Techno</option><option>Hard Trance</option><option>Drum and Bass</option><option>Dubstep</option><option>Electro</option><option>Ambient</option><option>Rock</option><option>Metal</option><option>Punk</option><option>Pop</option><option>Hip Hop</option><option>Jazz</option><option>Blues</option><option>Soul</option><option>Funk</option><option>Disco</option><option>Reggae</option><option>Country</option><option>Klassik</option></datalist>
 <style>
 #pk-concept{--bg:#1c1b19;--panel:#25231f;--line:#454039;--ink:#fcf0df;--muted:#c8baaa;--orange:#aa4926;background:var(--bg);color:var(--ink);color-scheme:dark;display:grid;grid-template-columns:155px minmax(0,1fr);font:14px/1.4 "Instrument Sans",system-ui,sans-serif;border-radius:12px;overflow:hidden}
 #pk-concept *{box-sizing:border-box} #pk-concept [hidden]{display:none!important}
@@ -112,6 +239,29 @@
 #pk-concept footer{grid-column:1/-1;border-top:1px solid var(--line);display:grid;grid-template-columns:minmax(110px,1fr) auto 2fr;align-items:center;gap:12px;padding:12px 18px;background:#211f1b}
 #pk-concept .timeline{display:grid;gap:3px} #pk-concept input[type=range]{width:100%;accent-color:#ee8756;margin:0} #pk-concept footer button{border-radius:50%;min-width:42px;height:42px}
 #pk-concept dialog{background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:18px;width:min(500px,94%)} #pk-concept dialog::backdrop{background:#0009}
+#pk-concept [data-metadata-dialog]{width:min(740px,90vw);max-height:85vh;overflow:auto}
+#pk-concept [data-metadata-dialog]>header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+#pk-concept [data-metadata-results]{display:grid;gap:8px;margin:12px 0}
+#pk-concept [data-metadata-results] button{text-align:left;white-space:normal}
+#pk-concept [data-metadata-results] button[aria-pressed=true]{border-color:var(--accent,#ee8756)}
+#pk-concept [data-metadata-fields] label{display:flex;align-items:center;gap:8px}
+#pk-concept .metadata-comparison{overflow-x:auto}
+#pk-concept .selection-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+#pk-concept .cover-card{position:relative;min-width:0}
+#pk-concept .cover-card>.cover{width:100%;height:100%}
+#pk-concept .cover-select{position:absolute;top:8px;left:8px;z-index:1;background:var(--panel);padding:4px;border:1px solid var(--line);border-radius:5px;line-height:1}
+#pk-concept .cover-trash{position:absolute;top:8px;right:8px;z-index:1;padding:4px 7px;background:var(--panel)}
+#pk-concept .cover .genre{display:block;color:var(--muted);margin-top:4px}
+#pk-concept .cover[aria-pressed=true] small{color:inherit}
+#pk-concept [data-delete-dialog],#pk-concept [data-download-review-dialog]{max-height:85vh;overflow:auto}
+#pk-concept [data-delete-items]{max-height:30vh;overflow:auto;padding-left:24px}
+#pk-concept .check-line{display:flex;align-items:center;gap:8px}
+#pk-concept input[type=checkbox]{width:16px;height:16px;min-height:0;padding:0;flex:none}
+#pk-concept [data-library-status]{white-space:pre-wrap}
+#pk-concept [data-results] .selection-cell{width:36px}
+#pk-concept [data-metadata-dialog] th:nth-child(n),#pk-concept [data-metadata-dialog] td:nth-child(n){display:table-cell}
+#pk-concept [data-metadata-dialog] table{table-layout:fixed}
+#pk-concept [data-metadata-dialog] [hidden]{display:none!important}
 #pk-concept form,#pk-concept form label{display:grid;gap:6px;min-width:0} #pk-concept form{gap:11px} #pk-concept form header{justify-content:space-between}
 #pk-concept .edit{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
 @media(max-width:750px){#pk-concept{grid-template-columns:1fr} #pk-concept aside{padding:9px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap} #pk-concept aside strong{margin:0} #pk-concept nav{display:flex} #pk-concept main{padding:14px} #pk-concept .library{grid-template-columns:1fr} #pk-concept [data-detail]{border-left:0;border-top:1px solid var(--line);padding:10px 0 0} #pk-concept [data-detail] .art{display:none}}
@@ -131,7 +281,19 @@
 #pk-concept .support{color:#ff5d63;font-size:22px;padding:0 8px}
 #pk-concept .cover-art{display:block;padding:0!important;aspect-ratio:1.15;background:radial-gradient(circle,#e47145 0 7%,#171514 8% 27%,#23201d 28% 29%,#141311 30% 37%,#362b25 38%);overflow:hidden}
 #pk-concept .cover-art .art{height:100%}
+#pk-concept .cover-art[data-kind=Set]{position:relative;background:#362b25}
+#pk-concept .cover-art[data-kind=Set]:has(img[hidden])::after{content:"";position:absolute;inset:30% 24%;border:2px solid #d0aa90;border-radius:7px;background:linear-gradient(transparent 45%,#d0aa90 46% 49%,transparent 50%),linear-gradient(90deg,transparent 44%,#e47145 45% 55%,transparent 56%) center 48% / 100% 22% no-repeat}
+#pk-concept [data-cover-preview]{display:block;width:min(230px,100%);aspect-ratio:1;object-fit:cover;margin:12px 0;border-radius:7px}
+#pk-concept [data-cover-status]{margin-top:10px}
 #pk-concept .entry-actions{display:flex;gap:6px;flex-wrap:wrap}
+#pk-concept [data-tracklist-dialog]{width:min(640px,94%);max-height:88vh;overflow:auto}
+#pk-concept [data-tracklist-dialog] form,#pk-concept [data-tracklist-dialog] details{margin-top:12px}
+#pk-concept [data-tracklist-rows] td:first-child{width:100px;white-space:nowrap}
+#pk-concept [data-tracklist-rows] td:last-child{width:36px;text-align:right}
+#pk-concept [data-scan-rows]>div{display:grid;grid-template-columns:100px 1fr 1fr auto auto;align-items:center;gap:6px;margin-bottom:6px}
+#pk-concept [data-scan-rows] input{min-width:0;width:100%}
+#pk-concept [data-scan-rows] small{grid-column:2/-1}
+@media(max-width:560px){#pk-concept [data-scan-rows]>div{grid-template-columns:1fr 1fr}#pk-concept [data-scan-rows] small{grid-column:1/-1}}
 #pk-concept .detail-icon{width:38px;padding:0;font:19px/1 "Segoe UI Symbol",sans-serif}
 #pk-concept [data-downloads]{display:grid;align-content:start;gap:14px;min-width:0}
 #pk-concept [data-youtube] label{max-width:600px}
@@ -155,6 +317,208 @@
 #pk-concept .library:has([data-detail][hidden]){grid-template-columns:minmax(0,1fr)}
 @media(max-width:750px){#pk-concept{grid-template-rows:auto minmax(0,1fr) auto}#pk-concept [data-detail] .cover-art{display:none}}
 </style>
+<style>
+#pk-concept{font-size:calc(14px * var(--font-scale,1))}
+#pk-concept .covers{grid-template-columns:repeat(auto-fill,minmax(min(100%,var(--tile-size,180px)),1fr))}
+#pk-concept .views{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+#pk-concept .tile-size{display:grid;gap:4px;font-size:12px;color:var(--muted);width:120px}
+#pk-concept .playlist-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+#pk-concept .usage-notice{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--orange);border-radius:7px;padding:12px 14px;line-height:1.55}
+#pk-concept .playlist-toolbar label{display:flex;align-items:center;gap:8px}
+#pk-concept .card-tools{position:absolute;right:7px;top:7px;display:flex;gap:5px;z-index:1}
+#pk-concept .card-tools button{padding:4px 7px;background:var(--panel)}
+#pk-concept .cover-operations{position:absolute;right:7px;top:43px;display:flex;gap:5px;z-index:1}
+#pk-concept .cover-operations button{padding:4px 7px;background:var(--panel)}
+#pk-concept .favorite-button[aria-pressed=true]{color:#28d6c5;border-color:#28d6c5}
+#pk-concept [data-favorites][aria-pressed=true]{color:#28d6c5}
+#pk-concept[data-density=Kompakt] .covers{gap:7px}
+#pk-concept[data-density=Kompakt] .cover>span:not(.cover-art){padding:5px 7px}
+#pk-concept[data-details=false] .library{grid-template-columns:minmax(0,1fr)}
+#pk-concept[data-details=false] [data-detail]{display:none}
+#pk-concept [data-playlists-dialog]{width:min(680px,92vw);max-height:85vh;overflow:auto}
+#pk-concept [data-playlist-items] li{padding:7px 0;border-bottom:1px solid var(--line)}
+#pk-concept [data-playlist-items] li>span{display:block;margin-bottom:5px}
+#pk-concept [data-playlist-items] button{margin-right:5px}
+#pk-concept[data-accent=Türkis]{--orange:#087e76}
+#pk-concept[data-accent=Blau]{--orange:#2563a6}
+#pk-concept[data-accent=Violett]{--orange:#7950a6}
+#pk-concept .hot,#pk-concept button[aria-pressed=true]:not(.favorite-button){background:var(--orange);border-color:var(--orange)}
+#pk-concept input[type=range],#pk-concept progress{accent-color:var(--orange)}
+#pk-concept footer{grid-template-columns:minmax(100px,1fr) auto auto auto minmax(90px,2fr) auto minmax(60px,100px) auto;gap:8px}
+#pk-concept footer [data-now]{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#pk-concept[data-mini=true]{grid-template-columns:1fr;grid-template-rows:1fr}
+#pk-concept[data-mini=true]>aside,#pk-concept[data-mini=true]>main{display:none!important}
+#pk-concept[data-mini=true]>footer{grid-row:1;grid-template-columns:auto auto auto minmax(80px,1fr) auto auto;padding:8px 12px}
+#pk-concept[data-mini=true] [data-now]{grid-column:1/-1}
+#pk-concept[data-mini=true] .volume{display:none}
+@media(max-width:750px){#pk-concept:not([data-mini=true]) footer{grid-template-columns:minmax(0,1fr) auto auto auto auto auto}#pk-concept:not([data-mini=true]) footer .timeline{grid-column:1/5}#pk-concept:not([data-mini=true]) footer .volume{grid-column:5/7}#pk-concept:not([data-mini=true]) footer [data-now]{grid-column:1/3}}
+</style>
+<style>
+/* Approved collection concept, 22 November 2026. */
+#pk-concept{--bg:#191817;--panel:#252321;--line:#3b3834;--ink:#f6f4ef;--muted:#bfbcb7;--orange:#c66334;--sidebar:248px;--detail:320px;--player:94px;grid-template-columns:var(--sidebar) minmax(0,1fr);font-family:"Segoe UI",system-ui,sans-serif}
+#pk-concept svg{width:24px;height:24px;flex:none;vertical-align:middle}
+#pk-concept aside{min-width:0;padding:30px 15px;background:linear-gradient(110deg,#20201e,#171716)}
+#pk-concept aside strong{display:flex;align-items:center;gap:10px;font-size:25px;letter-spacing:-1px;margin:0 6px 28px}
+#pk-concept aside strong svg{width:34px;height:34px;border-radius:50%;padding:6px;background:var(--orange);color:#191817}
+#pk-concept nav{gap:6px}
+#pk-concept nav button{display:flex;align-items:center;gap:20px;min-height:50px;border-radius:9px;padding:10px 17px;font-size:18px}
+#pk-concept nav button svg{width:26px;height:26px}
+#pk-concept nav button[aria-pressed=true]:not(.favorite-button){background:color-mix(in srgb,var(--orange) 40%,transparent);border-color:transparent}
+#pk-concept nav button[aria-pressed=true] svg{color:#ef8750}
+#pk-concept nav [data-command=settings]{margin-top:24px;position:relative}
+#pk-concept nav [data-command=settings]::before{content:"";position:absolute;left:7px;right:7px;top:-14px;border-top:1px solid var(--line)}
+#pk-concept main{padding:18px 24px 24px;background:radial-gradient(ellipse at 20% 0,#25231f55,transparent 70%),var(--bg)}
+#pk-concept [data-collection]{padding-right:calc(var(--detail) + 24px)}
+#pk-concept [data-collection]:has([data-detail][hidden]),#pk-concept[data-details=false] [data-collection]{padding-right:24px}
+#pk-concept .collection-header{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px 20px;margin-bottom:22px}
+#pk-concept h1{font-size:40px;line-height:1.3;font-weight:700;letter-spacing:-1px}
+#pk-concept .collection-header h1{grid-row:1;grid-column:1}
+#pk-concept .collection-header .support{grid-row:1;grid-column:2;background:transparent;border:0;font-size:15px;color:var(--ink);padding:0;justify-self:end}
+#pk-concept .collection-header .support::first-letter{color:#f66b57;font-size:25px}
+#pk-concept .collection-header input{grid-row:2;grid-column:1;width:100%;margin:0;min-width:0;height:46px;border-radius:9px;padding-left:18px;background:linear-gradient(120deg,#292724,#242321);font-size:18px}
+#pk-concept .collection-header [data-add]{grid-row:2;grid-column:2;height:46px;font-size:17px;padding:8px 18px}
+#pk-concept .toolbar{gap:14px;margin:0 0 24px;flex-wrap:wrap}
+#pk-concept .filter-access{position:relative}
+#pk-concept [data-filter-toggle]{display:flex;align-items:center;gap:10px;font-size:17px;padding:8px 14px}
+#pk-concept [data-filters]{position:absolute;left:0;top:calc(100% + 8px);z-index:5;width:320px;max-width:calc(100vw - 40px);background:var(--panel);padding:14px;border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 40px #0008;display:grid;grid-template-columns:1fr}
+#pk-concept [data-filters] select{width:100%}
+#pk-concept [data-filter-chips]{display:flex;gap:7px;flex-wrap:wrap}
+#pk-concept [data-filter-chips] button{border-radius:24px;background:color-mix(in srgb,var(--orange) 70%,var(--bg));border:0;padding:7px 15px}
+#pk-concept [data-count]{font-size:16px;margin:0;padding-left:16px;border-left:1px solid var(--line)}
+#pk-concept .views{margin-left:auto;flex-wrap:nowrap}
+#pk-concept [data-view]{padding:8px 10px;min-width:43px}
+#pk-concept .display-options{position:relative}
+#pk-concept .display-options summary{cursor:pointer;color:var(--muted);padding:9px;font-size:13px}
+#pk-concept .display-options>div{position:absolute;right:0;top:100%;padding:16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;z-index:5;width:220px;box-shadow:0 12px 40px #0008}
+#pk-concept .tile-size{width:100%;gap:12px;margin-bottom:12px}
+#pk-concept .library,#pk-concept .library:has([data-detail][hidden]){display:block}
+#pk-concept .covers{gap:18px 16px;grid-template-columns:repeat(auto-fill,minmax(min(100%,var(--tile-size,180px)),1fr))}
+#pk-concept .cover{border:1px solid transparent;border-radius:11px;background:linear-gradient(#292724,#242220);box-shadow:0 5px 14px #0002}
+#pk-concept .cover[aria-pressed=true]{background:linear-gradient(#292724,#242220);border:2px solid #ef8750;color:var(--ink)}
+#pk-concept .cover:hover{border-color:#7f6b5d}
+#pk-concept .cover-art{aspect-ratio:1;position:relative;border-radius:9px;overflow:hidden}
+#pk-concept .cover-art .art{aspect-ratio:1;height:100%;object-fit:cover}
+#pk-concept .cover>span:not(.cover-art){padding:9px 12px 12px;line-height:1.35;min-height:88px}
+#pk-concept .cover strong{font-size:18px;font-weight:650;display:inline-block;line-height:1.2}
+#pk-concept .cover small{font-size:14px;color:var(--muted)}
+#pk-concept .cover .genre{font-size:12px;margin:5px 25px 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#pk-concept .cover-select{top:9px;left:9px;padding:6px;background:#25231f77;border:0;border-radius:7px}
+#pk-concept .cover-select input{appearance:none;border:2px solid #f5f2ea;width:19px;height:19px;border-radius:4px;display:block;background:transparent}
+#pk-concept .cover-select input:checked{background:var(--orange);box-shadow:inset 0 0 0 3px #25231f}
+#pk-concept .card-tools{right:8px;top:8px;display:grid;gap:0;border-radius:7px;background:#25231f99;overflow:hidden}
+#pk-concept .card-tools button{background:transparent;border:0;width:34px;min-height:29px;height:29px;padding:4px;border-radius:0}
+#pk-concept .card-tools button svg{width:22px;height:22px}
+#pk-concept .cover-operations{top:auto;bottom:8px;right:8px}
+#pk-concept .cover-operations button{background:transparent;border:0;width:27px;min-height:27px;height:27px;padding:3px}
+#pk-concept .cover-operations svg{width:20px;height:20px}
+#pk-concept .detail-icon>span{display:none}
+#pk-concept .favorite-button[aria-pressed=true]{color:#28d6c5;background:transparent}
+#pk-concept .favorite-button[aria-pressed=true] svg{fill:currentColor}
+#pk-concept .selection-actions{padding:10px 0;border-bottom:1px solid var(--line);margin-bottom:16px}
+#pk-concept:not([data-has-selection=true]) .selection-actions{display:none}
+#pk-concept .playlist-toolbar{margin:0 0 15px}
+#pk-concept .playlist-toolbar:has(select option:only-child){display:none}
+#pk-concept [data-library-status]:empty{display:none}
+#pk-concept [data-library-status]:not(:empty){margin:0 0 12px}
+#pk-concept [data-detail]{position:fixed;right:0;top:0;bottom:var(--player);width:var(--detail);padding:42px 22px 24px;border-left:1px solid var(--line);background:linear-gradient(115deg,#201e1c,#181716);overflow-y:auto;z-index:2}
+#pk-concept [data-detail]>.cover-art{width:100%;aspect-ratio:1;border-radius:9px}
+#pk-concept [data-detail] h2{font-size:30px;letter-spacing:-.7px;line-height:1.2;margin:24px 0 5px}
+#pk-concept [data-detail]>p:not(.muted){font-size:21px;color:var(--muted);margin:0 0 20px}
+#pk-concept [data-detail] dl{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:20px 8px;margin:0 0 14px;gap:10px 14px;grid-template-columns:90px minmax(0,1fr);font-size:15px}
+#pk-concept [data-detail] dt{color:var(--muted)}
+#pk-concept [data-detail] dd{font-weight:500}
+#pk-concept [data-detail] .entry-actions{display:grid;gap:2px}
+#pk-concept [data-detail] .detail-icon{display:flex;align-items:center;gap:16px;width:100%;height:auto;min-height:44px;padding:8px;background:transparent;border-color:transparent;border-radius:7px;font:inherit;text-align:left}
+#pk-concept [data-detail] .detail-icon:hover{background:var(--panel)}
+#pk-concept [data-detail] .detail-icon>span{display:inline;font-size:15px}
+#pk-concept [data-detail] [data-audio-info]:empty{display:none}
+#pk-concept footer{min-height:var(--player);padding:12px 28px;grid-template-columns:minmax(140px,1.2fr) auto auto auto minmax(150px,2fr) auto minmax(80px,145px) auto;gap:14px;background:linear-gradient(100deg,#24221f,#1d1c1a);z-index:4}
+#pk-concept footer button{background:transparent;border:0}
+#pk-concept footer [data-toggle]{background:var(--orange);color:white;width:50px;height:50px;font-size:23px}
+#pk-concept footer .timeline{display:flex;align-items:center;gap:18px;flex-direction:row-reverse}
+#pk-concept footer [data-time]{white-space:nowrap;color:var(--ink);font-size:14px}
+#pk-concept footer .volume{font-size:0;display:flex;align-items:center;gap:12px}
+#pk-concept footer .volume::before{display:none}
+#pk-concept footer .volume svg{width:22px;height:22px;color:var(--ink)}
+#pk-concept footer [data-now]{display:flex;align-items:center;gap:16px}
+#pk-concept .now-art{width:64px;height:64px;object-fit:cover;border-radius:6px}
+#pk-concept .now-copy{overflow:hidden}
+#pk-concept .now-copy strong,#pk-concept .now-copy small{display:block;overflow:hidden;text-overflow:ellipsis}
+#pk-concept .now-copy strong{font-size:17px}
+#pk-concept .now-copy small{font-size:15px;margin-top:3px}
+#pk-concept button:focus-visible,#pk-concept summary:focus-visible,#pk-concept input:focus-visible{outline:2px solid #eea16e;outline-offset:3px}
+#pk-concept[data-theme=Hell] [data-detail]{background:var(--bg)}
+#pk-concept[data-theme=Hell] .cover,#pk-concept[data-theme=Hell] .cover[aria-pressed=true]{background:var(--panel)}
+#pk-concept[data-theme=Hell] .collection-header input{background:var(--panel)}
+@media(min-width:1450px){#pk-concept{--sidebar:256px;--detail:340px}}
+@media(max-width:1150px) and (min-width:751px){#pk-concept{--sidebar:190px;--detail:270px}#pk-concept aside strong{font-size:19px}#pk-concept nav button{font-size:16px;gap:12px;padding-left:10px}#pk-concept main{padding-left:18px}#pk-concept footer{gap:5px;padding:12px}#pk-concept footer .timeline{display:grid;gap:2px}#pk-concept .collection-header{gap:12px}#pk-concept h1{font-size:34px}}
+@media(max-width:750px){#pk-concept{--player:145px;grid-template-columns:1fr}#pk-concept aside{padding:10px 14px}#pk-concept aside strong{font-size:20px;margin:0}#pk-concept aside strong svg{width:26px;height:26px}#pk-concept nav{display:flex;overflow-x:auto;width:100%;flex-wrap:nowrap}#pk-concept nav button{font-size:13px;min-height:36px;white-space:nowrap;gap:7px;padding:6px 9px}#pk-concept nav button svg{width:18px;height:18px}#pk-concept nav [data-command=settings]{margin:0}#pk-concept nav [data-command=settings]::before{display:none}#pk-concept [data-collection]{padding:16px}#pk-concept [data-detail]{position:static;width:100%;padding:18px 0;border-left:0;background:transparent}#pk-concept .collection-header{gap:12px}#pk-concept h1{font-size:30px}#pk-concept .collection-header input{font-size:14px}#pk-concept .collection-header [data-add]{font-size:14px;padding:8px}#pk-concept .toolbar{gap:8px}#pk-concept .views{gap:4px}#pk-concept [data-count]{font-size:13px;padding-left:8px}#pk-concept .covers{gap:12px}#pk-concept .cover strong{font-size:16px}#pk-concept footer{min-height:120px;padding:10px 14px}#pk-concept .now-art{width:42px;height:42px}#pk-concept footer .timeline{display:flex}#pk-concept footer [data-time]{font-size:12px}}
+#pk-concept[data-mini=true]>footer{min-height:0;gap:6px;padding:8px 12px}
+#pk-concept[data-mini=true] footer .now-art{width:32px;height:32px}
+#pk-concept[data-mini=true] footer .now-copy small{display:none}
+#pk-concept[data-mini=true] footer .timeline{display:grid;gap:2px}
+</style>
+<style>
+@media(max-width:750px){
+#pk-concept:not([data-mini=true]){grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) 130px}
+#pk-concept nav{max-width:100%;min-width:0}
+#pk-concept .collection-header{grid-template-columns:minmax(0,1fr) auto}
+#pk-concept .collection-header input{min-width:0}
+#pk-concept .views{margin-left:0}
+#pk-concept:not([data-mini=true]) footer{height:130px;min-height:0;grid-template-columns:minmax(0,1fr) 38px 44px 38px 32px 32px;grid-template-rows:54px 38px;gap:5px;padding:12px}
+#pk-concept:not([data-mini=true]) footer [data-now]{grid-row:1;grid-column:1;gap:8px}
+#pk-concept:not([data-mini=true]) footer [data-command=player-previous]{grid-row:1;grid-column:2}
+#pk-concept:not([data-mini=true]) footer [data-toggle]{grid-row:1;grid-column:3;width:42px;height:42px}
+#pk-concept:not([data-mini=true]) footer [data-command=player-next]{grid-row:1;grid-column:4}
+#pk-concept:not([data-mini=true]) footer [data-command=stop]{grid-row:1;grid-column:5}
+#pk-concept:not([data-mini=true]) footer [data-mini-toggle]{grid-row:1;grid-column:6}
+#pk-concept:not([data-mini=true]) footer button{min-width:28px;padding:0}
+#pk-concept:not([data-mini=true]) footer .timeline{grid-row:2;grid-column:1/5;gap:8px}
+#pk-concept:not([data-mini=true]) footer .volume{grid-row:2;grid-column:5/7;gap:4px}
+#pk-concept .now-copy strong{font-size:14px}
+#pk-concept .now-copy small{font-size:12px}
+#pk-concept .now-art{width:32px;height:32px}
+}
+</style>
+<style>
+#pk-concept [data-health]{display:grid;align-content:start;gap:16px}
+#pk-concept [data-health]>*{min-width:0;max-width:100%}
+#pk-concept .health-table{width:100%;min-width:0}
+#pk-concept .health-editor-fields{min-width:0;max-width:100%}
+#pk-concept .health-intro{max-width:900px;color:var(--muted)}
+#pk-concept .health-tabs{display:flex;gap:6px;flex-wrap:wrap}
+#pk-concept .health-tabs button{font-size:13px;min-height:35px;padding:7px 10px}
+#pk-concept .health-options{width:100%;max-width:100%}
+#pk-concept .health-options details{width:100%}
+#pk-concept .health-options summary{cursor:pointer}
+#pk-concept .health-options form{margin-top:15px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));align-items:end}
+#pk-concept .health-options p{grid-column:1/-1}
+#pk-concept .health-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:10px}
+#pk-concept .health-metric{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:16px}
+#pk-concept .health-metric strong{display:block;font-size:28px;letter-spacing:-1px}
+#pk-concept .health-metric span{color:var(--muted);font-size:13px}
+#pk-concept .health-controls{display:flex;gap:10px;margin:12px 0;flex-wrap:wrap}
+#pk-concept .health-controls input{flex:1;min-width:160px}
+#pk-concept .health-table{overflow:auto;max-height:65vh;border:1px solid var(--line);border-radius:9px;margin:12px 0}
+#pk-concept .health-table table{min-width:2100px;font-size:13px}
+#pk-concept .health-table th{position:sticky;top:0;background:var(--panel);z-index:1}
+#pk-concept .health-table td{vertical-align:top;max-width:240px;padding:10px}
+#pk-concept [data-health] .health-table th,#pk-concept [data-health] .health-table td{display:table-cell}
+#pk-concept [data-health-library]>p{font-size:13px;margin-top:10px}
+#pk-concept .health-history-row{background:var(--panel);border:1px solid var(--line);border-radius:8px;margin:10px 0;padding:12px;overflow-wrap:anywhere;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+#pk-concept [data-health-editor],#pk-concept [data-health-plan-dialog],#pk-concept [data-health-restore-dialog]{width:min(1000px,94vw);max-height:88vh;overflow:auto}
+#pk-concept .health-editor-fields{overflow:auto;margin:14px 0}
+#pk-concept .health-editor-fields table{min-width:680px;table-layout:fixed}
+#pk-concept .health-editor-fields th,#pk-concept .health-editor-fields td{display:table-cell!important}
+#pk-concept .health-editor-fields input:not([type=checkbox]){width:100%}
+#pk-concept .health-editor-fields td>small{display:block;margin:4px 0}
+#pk-concept .health-editor-fields td>button{font-size:12px;margin:3px;padding:4px 6px;min-height:28px;text-align:left;white-space:normal}
+#pk-concept .health-plan-item{background:var(--panel);padding:14px;margin:12px 0;border:1px solid var(--line);border-radius:8px;overflow-wrap:anywhere}
+#pk-concept [data-health-cover-preview]{max-width:240px;max-height:240px;object-fit:contain;border-radius:8px}
+#pk-concept [data-health-progress]{width:100%}
+#pk-concept [data-health-current],#pk-concept [data-health-status]{overflow-wrap:anywhere}
+</style>
 <script src="collection.js"></script>
+<script src="health.js"></script>
 
 </body></html>

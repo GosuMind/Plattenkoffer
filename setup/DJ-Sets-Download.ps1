@@ -15,6 +15,8 @@ $archive = Join-Path $config 'downloaded.txt'
 $common = @('--ignore-config', '--encoding', 'utf-8', '--ffmpeg-location', $bin,
     '--js-runtimes', "deno:$deno")
 $utf8 = [Text.UTF8Encoding]::new($false)
+. (Join-Path $PSScriptRoot 'DJ-Sets-Health.ps1')
+. (Join-Path $PSScriptRoot 'DJ-Sets-DownloadValidation.ps1')
 
 function Assert-SafePath([string]$Path) {
     $full = [IO.Path]::GetFullPath($Path)
@@ -59,8 +61,19 @@ function Safe-Name([string]$Value) {
 
 function Get-Preview($Url, $Playlist, $Aliases) {
     [string[]]$mode = @(if ($Playlist) { @('--yes-playlist', '--flat-playlist') } else { '--no-playlist' })
-    $json = & $yt @common @mode --skip-download --dump-json -- $Url
-    $exitCode = $LASTEXITCODE
+    $errorFile = [IO.Path]::GetTempFileName()
+    $previousPreference = $ErrorActionPreference
+    try {
+        # Windows PowerShell treats native stderr warnings as errors.
+        $ErrorActionPreference = 'Continue'
+        $PSNativeCommandUseErrorActionPreference = $false
+        $json = & $yt @common @mode --ignore-errors --skip-download --dump-json -- $Url 2> $errorFile
+        $exitCode = $LASTEXITCODE
+        $diagnostics = [IO.File]::ReadAllText($errorFile)
+    } finally {
+        $ErrorActionPreference = $previousPreference
+        [IO.File]::Delete($errorFile)
+    }
     $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
     foreach ($line in $json) {
         $item = ConvertFrom-Json -InputObject $line
@@ -68,7 +81,8 @@ function Get-Preview($Url, $Playlist, $Aliases) {
         # YouTube IDs are case-sensitive.
         if (!$seen.Add($item.id)) { continue }
         $title = [string]$item.title
-        if (!$title -or $title -match '^\[(Private|Deleted) video\]$') { continue }
+        if (!$title -or $title -match '^\[(Private|Deleted|Unavailable) video\]$' -or
+            $item.availability -in @('private','premium_only','subscriber_only','needs_auth','unavailable')) { continue }
         $artist = [string]$item.artist
         $source = 'YouTube-Metadaten'
         $review = !$artist
@@ -120,6 +134,7 @@ function Get-Preview($Url, $Playlist, $Aliases) {
             Source = $source; Selected = $true; Review = $review
         }
     }
+    if ($diagnostics.Trim()) { Write-Warning $diagnostics.Trim() }
     if ($exitCode -ne 0) {
         Write-Warning "YouTube lieferte die Vorschau nur teilweise oder gar nicht (Code $exitCode)."
     }
@@ -206,6 +221,7 @@ function Get-SetTarget($Root, $Row, $Reserved) {
 
 function Save-Set($Row) {
     $id = $Row.Id
+    if ($id -cnotmatch '^[a-zA-Z0-9_-]{11}$') { throw 'Ungültige YouTube-ID.' }
     $key = "youtube $id"
     if ($archiveIds.Contains($key)) { return }
     # Work on the same volume as the library so publishing is a directory rename.
@@ -221,6 +237,7 @@ function Save-Set($Row) {
     $published = $false
     if ([IO.File]::Exists($journal) -and ![IO.Directory]::Exists($payload)) {
         $previous = [IO.File]::ReadAllText($journal, $utf8)
+        $null=Assert-PkHealthScope $previous $MusicRoot
         Assert-SafePath $previous
         $previousInfo = Join-Path $previous 'info.json'
         if ([IO.File]::Exists($previousInfo)) {
@@ -261,16 +278,13 @@ function Save-Set($Row) {
         if ($LASTEXITCODE -ne 0 -or $codec -notin @('opus', 'aac')) { throw 'Audiospur konnte nicht geprüft werden.' }
         $extension = if ($codec -eq 'opus') { 'opus' } else { 'm4a' }
         $audioTemp = Join-Path $job "audio.tmp.$extension"
-        & $ffmpeg -nostdin -v error -y -i $source -map 0:a:0 -c:a copy $audioTemp
-        if ($LASTEXITCODE -ne 0) { throw 'FFmpeg konnte die Audiospur nicht übernehmen.' }
         Get-ChildItem -LiteralPath $payload -File | Where-Object { $_.Name -in @("audio.opus", "audio.m4a", "info.json", "cover.jpg", "cover.jpeg", "cover.png", "cover.webp", "cover.avif") } | Remove-Item
-        [IO.File]::Copy($audioTemp, (Join-Path $payload "audio.$extension"), $true)
-        [IO.File]::Copy($info, (Join-Path $payload 'info.json'), $true)
-        [IO.File]::Copy($cover, (Join-Path $payload ('cover' + [IO.Path]::GetExtension($cover))), $true)
+        Complete-PkDownloadPayload $Row $source $audioTemp $payload $info $cover
         [void][IO.Directory]::CreateDirectory($parent)
         [IO.Directory]::Move($payload, $target)
         Write-Host "Gespeichert: $target" -ForegroundColor Green
     }
+    Assert-PkPublishedDownload $target $Row
     $existing = if ([IO.File]::Exists($archive)) { [IO.File]::ReadAllText($archive, $utf8).TrimEnd("`r", "`n") }
     $lines = if ($existing) { "$existing`r`n$key`r`n" } else { "$key`r`n" }
     Write-AtomicText $archive $lines

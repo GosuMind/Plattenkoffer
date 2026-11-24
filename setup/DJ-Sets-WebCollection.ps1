@@ -17,23 +17,29 @@ function Send-WebLibrary {
             id=$id; title=(Get-LibraryDisplayTitle $entry); originalTitle=[string]$entry.Title; artist=[string]$entry.Artist
             series=[string]$entry.Series; event=[string]$entry.Event; place=[string]$entry.Location
             album=[string]$entry.Album; year=[string]$entry.Year; date=[string]$entry.Date
+            label=[string]$entry.Label; version=[string]$entry.Version
+            genre=[string]$entry.Genre
+            favorite=$entry.Path -in $web.LibraryState.Favorites
             kind=$(if ($entry.Type -eq 'Tracks') { 'Track' } else { 'Set' })
-            external=[bool]$entry.External; hasCover=!$entry.External
+            external=[bool]$entry.External; hasCover=$true
+            hasDescription=(!$entry.External -and [IO.File]::Exists((Join-Path $entry.Path 'info.json')))
         }
     })
     Send-WebCollectionMessage @{ type='collection'; entries=$records }
+    Send-WebPlaylists
     Send-WebCollectionMessage @{ type='update'; available=[bool]$updateCheck.Version }
 }
 
 function Send-WebPlayer {
     if (!$web.Ready -or !$web.Control.Visible) { return }
-    $stateKey = "$($nowPlaying.Text)|$($elapsedLabel.Text)|$($seekBar.Value)|$($audio.Process -ne $null)|$($transport.Enabled)"
+    $stateKey = "$($nowPlaying.Text)|$($elapsedLabel.Text)|$($seekBar.Value)|$($audio.Process -ne $null)|$($transport.Enabled)|$($web.Queue.Paths.Count)|$($web.Queue.Index)"
     if ($web.PlayerState -ceq $stateKey) { return }
     $web.PlayerState = $stateKey
     Send-WebCollectionMessage @{
         type='player'; title=$nowPlaying.Text; time=$elapsedLabel.Text
         position=$seekBar.Value; duration=$(if ($seekBar.Enabled) { $seekBar.Maximum } else { 0 })
         playing=[bool]$audio.Process; active=$transport.Enabled; id=$web.PlayingId
+        canPrevious=$web.Queue.Paths.Count -gt 1; canNext=$web.Queue.Paths.Count -gt 1
     }
 }
 
@@ -61,7 +67,15 @@ function Send-WebDownloads {
 }
 
 function Send-WebCover($Entry,[string]$Id) {
-    if ($Entry.External) { return }
+    $custom = Get-PkCustomCover $Entry $Id
+    Assert-SafePath $custom
+    if ([IO.File]::Exists($custom)) {
+        if ([IO.FileInfo]::new($custom).Length -gt 8MB) { throw 'Das gespeicherte Cover ist zu groß.' }
+        $encoded=[Convert]::ToBase64String([IO.File]::ReadAllBytes($custom))
+        Send-WebCollectionMessage @{type='cover';id=$Id;image="data:image/jpeg;base64,$encoded"}
+        return
+    }
+    if ($Entry.External) { Send-WebCollectionMessage @{type='cover';id=$Id;image=''}; return }
     $formats = [ordered]@{'jpg'='jpeg';'jpeg'='jpeg';'png'='png';'webp'='webp';'avif'='avif'}
     foreach ($extension in $formats.Keys) {
         $path = Join-Path $Entry.Path "cover.$extension"
@@ -73,11 +87,35 @@ function Send-WebCover($Entry,[string]$Id) {
         Send-WebCollectionMessage @{ type='cover'; id=$Id; image="data:image/$mime;base64,$encoded" }
         return
     }
+    Send-WebCollectionMessage @{type='cover';id=$Id;image=''}
+}
+
+function Save-WebSetPosition([switch]$Forget) {
+    if (!$Forget -and $settings.ContainsKey('ResumeSets') -and !$settings.ResumeSets) { return }
+    $id=$web.PlayingId
+    if (!$id -or !$web.SetPlaying) { return }
+    try {
+        if ($Forget) {
+            $web.Resume.Remove($id)
+        } elseif ($transport.Enabled) {
+            $position=$audio.Offset + $(if ($audio.Process) { $audio.Clock.Elapsed.TotalSeconds } else { 0 })
+            $second=[int][Math]::Floor([Math]::Max(0.0,[double]$position))
+            $previous=$web.Resume[$id]
+            if ($previous -and $previous.part -eq $audio.Index -and $previous.second -eq $second) { return }
+            $web.Resume[$id]=@{part=$audio.Index;second=$second}
+        } else { return }
+        Write-AtomicText $resumePositionsPath (ConvertTo-Json -InputObject $web.Resume -Depth 4)
+    } catch { Write-Verbose $_.Exception.Message }
 }
 
 function Send-WebSettings([string]$Message, [switch]$Values) {
     $payload = @{ type='settings'; status=$Message }
-    if ($Values) { $payload.folder=$settings.MusicRoot; $payload.theme=$settings.Theme }
+    if ($Values) {
+        $payload.folder=$settings.MusicRoot; $payload.theme=$settings.Theme
+        $prefs=@{}
+        foreach ($key in (Get-PkDefaultPreferences).Keys) { $prefs[$key]=$settings[$key] }
+        $payload.preferences=$prefs
+    }
     Send-WebCollectionMessage $payload
 }
 
@@ -89,9 +127,10 @@ function Save-WebSettings($Message) {
         $path=[IO.Path]::GetFullPath($Message.folder)
         Assert-SafePath $path
         [void][IO.Directory]::CreateDirectory($path)
-        Write-AtomicText $settingsPath (ConvertTo-Json @{MusicRoot=$path;Theme=$Message.theme})
-        $settings.MusicRoot=$path
-        $settings.Theme=$Message.theme
+        $next=Merge-PkPreferences $settings $Message.preferences
+        $next.MusicRoot=$path; $next.Theme=$Message.theme
+        Write-AtomicText $settingsPath (ConvertTo-Json $next)
+        Apply-PkPreferences $next
         $destination.Text="Downloadordner: $path"
         Update-Targets
         Update-LibraryResults -Reload
@@ -131,7 +170,7 @@ function Send-WebDiagnostic {
 function Start-WebDiagnostic([string]$Tool) {
     $job=$libraryView.Diagnostic
     if ($job.Worker) { return }
-    if ($state.Worker -or $web.Conversion.Worker -or $updateCheck.Phase -eq 'Download' -and $updateCheck.Worker) {
+    if ($state.Worker -or $web.Conversion.Worker -or $web.TransitionScan.Worker -or $updateCheck.Phase -eq 'Download' -and $updateCheck.Worker) {
         $job.Status='Warte, bis der laufende Vorgang beendet ist.'
         Send-WebDiagnostic
         return
@@ -170,9 +209,9 @@ function Send-WebEntryDialog($Entry,[string]$Id,[string]$Action) {
     switch ($Action) {
         'edit' {
             $title = 'Einordnung bearbeiten'
-            $labels = [ordered]@{Title='Tracktitel';Artist='DJs';SetNameOverride='Eigener Set-Name (optional)';Album='Album';Year='Jahr';Date='Aufnahmedatum (JJJJ-MM-TT)';Series='Set-Reihe';Event='Veranstaltung';Location='Location'}
+            $labels = [ordered]@{Title='Tracktitel';Artist='DJs';SetNameOverride='Eigener Set-Name (optional)';Album='Album';Year='Jahr';Label='Label';Version='Version / Remix';Genre='Genre';Date='Aufnahmedatum (JJJJ-MM-TT)';Series='Set-Reihe';Event='Veranstaltung';Location='Location'}
             $fields = @(foreach ($key in $labels.Keys) {
-                $only = if ($key -in @('Title','Album')) { 'Tracks' } elseif ($key -in @('SetNameOverride','Date','Series','Event','Location')) { 'Sets' } else { '' }
+                $only = if ($key -in @('Title','Album','Label','Version')) { 'Tracks' } elseif ($key -in @('SetNameOverride','Date','Series','Event','Location')) { 'Sets' } else { '' }
                 @{name=$key;label=$labels[$key];value=[string]$Entry.$key;required=$key -eq 'Title';only=$only}
             })
             $fields += @{name='Type';label='Typ';value=$Entry.Type;options=@('Sets','Tracks');disabled=!$Entry.External}
@@ -206,7 +245,7 @@ function Send-WebEntryStatus([string]$Message,[switch]$Close) {
 function Save-WebEntry($Entry,$Values) {
     if ($state.Worker) { throw 'Warte, bis der laufende Download beendet ist.' }
     $metadata=[ordered]@{}
-    foreach ($key in @('Title','Artist','Album','Year','Date','Series','Event','Location','SetNameOverride')) {
+    foreach ($key in @('Title','Artist','Album','Year','Label','Version','Genre','Date','Series','Event','Location','SetNameOverride')) {
         $metadata[$key]=if ($Values.PSObject.Properties[$key]) { ([string]$Values.$key).Trim() } else { [string]$Entry.$key }
     }
     if (!$metadata.Title) { throw 'Bitte einen Titel eingeben.' }
@@ -218,6 +257,14 @@ function Save-WebEntry($Entry,$Values) {
         }
         $metadata.Year=$dateValue.ToString('yyyy',[Globalization.CultureInfo]::InvariantCulture)
     }
+    $sources=[ordered]@{}
+    $sourceValues=if ($Values.PSObject.Properties['MetadataSources']) { $Values.MetadataSources } else { $Entry.MetadataSources }
+    foreach ($property in $sourceValues.PSObject.Properties) {
+        if ($property.Name -in @('Album','Year','Label','Version','Genre') -and $property.Value.Value -ceq $metadata[$property.Name]) {
+            $sources[$property.Name]=$property.Value
+        }
+    }
+    if ($sources.Count) { $metadata.MetadataSources=[pscustomobject]$sources }
     Assert-SafePath $Entry.Path
     if ($Entry.External) {
         if ($Values.Type -notin @('Sets','Tracks')) { throw 'Bitte einen gültigen Typ auswählen.' }
@@ -230,7 +277,7 @@ function Save-WebEntry($Entry,$Values) {
         Save-LocalLibrary $entries
     } else {
         if (![IO.Directory]::Exists($Entry.Path)) { throw 'Der Eintragsordner ist nicht erreichbar.' }
-        Write-AtomicText (Join-Path $Entry.Path 'plattenkoffer.json') (ConvertTo-Json $metadata)
+        Write-AtomicText (Join-Path $Entry.Path 'plattenkoffer.json') (ConvertTo-Json $metadata -Depth 6)
     }
     Update-LibraryResults -Reload
     Send-WebEntryStatus '' -Close
@@ -273,8 +320,34 @@ function Complete-WebExport {
 }
 
 function Invoke-WebCollectionCommand($Message) {
+    if ($Message.command -eq 'health' -or $Message.command -like 'health-*') { Invoke-WebHealth $Message;return }
+    if($web.Health.Worker -and $web.Health.Operation -in @('repair','restore') -and $Message.command -in @('play','toggle','seek','playlist-play','player-next','player-previous')){throw 'Während einer Reparatur oder Wiederherstellung bleibt die Wiedergabe gestoppt.'}
+    if ($web.Health.Worker -and $Message.command -in @('download','convert-start','metadata-apply','delete-confirm','cover-save','cover-reset','edit-submit','move-submit','settings-save','settings-restore','diagnose-yt','diagnose-ffmpeg','diagnose-deno')) {
+        throw 'Zuerst die laufende Bibliothekspflege beenden.'
+    }
     $entry = $null
     if ($Message.id -is [string]) { $entry = $web.Entries[$Message.id] }
+    if ($Message.command -in @('favorite','playlist-create','playlist-rename','playlist-delete','playlist-add','playlist-remove','playlist-order')) {
+        Invoke-WebPlaylistCommand $Message
+        return
+    }
+    if ($Message.command -in @('delete-preview','delete-confirm','delete-cancel')) {
+        Invoke-WebLibraryDelete $Message
+        return
+    }
+    if ($Message.command -in @('metadata-open','metadata-search','metadata-select','metadata-source','metadata-apply')) {
+        Invoke-WebMetadata $entry $Message
+        return
+    }
+    if ($Message.command -in @('cover-edit','cover-choose','cover-save','cover-reset')) {
+        if ($entry) { Invoke-WebCoverEdit $entry $Message }
+        return
+    }
+    if ($Message.command -in @('tracklist-open','tracklist-add','tracklist-import','tracklist-description','tracklist-remove','tracklist-time','tracklist-jump','tracklist-scan','tracklist-confirm','tracklist-preview')) {
+        try { Invoke-WebTracklist $entry $Message }
+        catch { Send-WebCollectionMessage @{type='tracklist';id=$Message.id;status=$_.Exception.Message} }
+        return
+    }
     switch ($Message.command) {
         'convert' { Send-WebConversion }
         'convert-files' { Select-ConversionFiles }
@@ -314,14 +387,15 @@ function Invoke-WebCollectionCommand($Message) {
         }
         'cover' { if ($entry) { Send-WebCover $entry $Message.id } }
         'play' {
-            if ($entry) {
-                Start-LibraryPlayback $entry.Path (Get-LibraryDisplayTitle $entry)
-                $web.PlayingId=$Message.id
-                $web.PlayerState=''
-            }
+            Start-WebPlaybackQueue $Message
         }
+        'playlist-play' { Start-WebPlaybackQueue $Message }
+        'player-next' { [void](Step-WebPlaybackQueue 1) }
+        'player-previous' { [void](Step-WebPlaybackQueue -1) }
+        'mini-player' { Set-WebMiniPlayer (![bool]$web.Mini) }
+        'preferences-change' { try { Save-PkPreferences $Message.values } catch { Send-WebSettings $_.Exception.Message } }
         'toggle' { $transport.PerformClick() }
-        'stop' { Stop-LibraryPlayback }
+        'stop' { Save-WebSetPosition; $web.Queue.Paths=@(); Stop-LibraryPlayback }
         'seek' {
             if ($seekBar.Enabled -and ($Message.position -is [int] -or $Message.position -is [long])) {
                 $seekBar.Value=[int][Math]::Max(0,[Math]::Min($seekBar.Maximum,$Message.position))
@@ -331,7 +405,7 @@ function Invoke-WebCollectionCommand($Message) {
         'volume' {
             if (($Message.value -is [int] -or $Message.value -is [long]) -and $Message.value -ge 0 -and $Message.value -le 100) {
                 $volume.Value=[int]$Message.value
-                & $volumeChanged
+                & $volumeChangedAction
             }
         }
         'downloads' {
@@ -350,7 +424,9 @@ function Invoke-WebCollectionCommand($Message) {
         'preview-links' {
             if (!$state.Worker -and $Message.value -is [string] -and $Message.value.Length -le 16000) {
                 $link.Text=$Message.value
-                $preview.PerformClick()
+                $script:WebPlaylistChoice = $Message.playlist -eq $true
+                try { $preview.PerformClick() }
+                finally { $script:WebPlaylistChoice = $null }
             }
         }
         'edit-preview' {
@@ -366,7 +442,8 @@ function Invoke-WebCollectionCommand($Message) {
                 break
             }
         }
-        'download' { $download.PerformClick() }
+        'download' { Start-WebDownloadReview }
+        'download-review-submit' { Confirm-WebDownloadReview $Message }
         'cancel-download' { $stop.PerformClick() }
         'resume-queue' { $resume.PerformClick() }
         'retry-queue' { $retry.PerformClick() }
@@ -427,6 +504,7 @@ function Invoke-WebCollectionCommand($Message) {
                     $target=Get-EditedSetPath $settings.MusicRoot ([string]$Message.values.Artist) ([string]$Message.values.Title) $entry.Path
                     if (!$target) { throw 'Bitte DJ-Ordner und Eintragsordner eingeben.' }
                     if (!(Move-LibrarySet $settings.MusicRoot $entry.Path $target)) { throw 'Der Zielordner entspricht dem bisherigen Ordner.' }
+                    Update-PkLibraryReferences $entry.Path $target
                     Update-LibraryResults -Reload
                     Send-WebEntryStatus '' -Close
                 } catch { Send-WebEntryStatus $_.Exception.Message }
@@ -471,7 +549,7 @@ function Initialize-WebCollection {
             })
             $coreView.Add_WebMessageReceived({
                 param($source,$eventArgs)
-                if ($eventArgs.Source -cne 'https://plattenkoffer.local/index.html' -or $eventArgs.WebMessageAsJson.Length -gt 32768) { return }
+                if ($eventArgs.Source -cne 'https://plattenkoffer.local/index.html' -or $eventArgs.WebMessageAsJson.Length -gt 160000) { return }
                 try {
                     $message=ConvertFrom-Json -InputObject $eventArgs.WebMessageAsJson
                     if ($message.command -is [string] -and $web.Commands.Count -lt 512) { $web.Commands.Enqueue($message) }

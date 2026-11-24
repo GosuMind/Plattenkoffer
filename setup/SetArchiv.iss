@@ -4,7 +4,7 @@ AppName=Plattenkoffer
 AppPublisher=Mindgamer
 SetupIconFile=SetArchiv.ico
 UninstallDisplayIcon={app}\SetArchiv.ico
-#define AppVersion "0.3.9"
+#define AppVersion "0.5.0"
 #ifndef UpdateSignerHash
   #define UpdateSignerHash ""
 #endif
@@ -22,10 +22,18 @@ MinVersion=10.0
 OutputDir=..\release
 OutputBaseFilename=Plattenkoffer-Setup-{#AppVersion}
 WizardStyle=modern
+LicenseFile=Nutzungshinweis.txt
 ArchiveExtraction=full
 
 [Languages]
 Name: "de"; MessagesFile: "compiler:Languages\German.isl"
+
+[Messages]
+WizardLicense=Hinweis zur rechtmäßigen Nutzung
+LicenseLabel=Bitte lesen Sie den folgenden Nutzungshinweis vor der Installation.
+LicenseLabel3=Bestätigen Sie anschließend, dass Sie den Hinweis gelesen haben und Plattenkoffer rechtmäßig verwenden werden.
+LicenseAccepted=Ich habe den Hinweis gelesen und stimme der rechtmäßigen Nutzung &zu.
+LicenseNotAccepted=Ich stimme &nicht zu.
 
 [INI]
 Filename: "{app}\plattenkoffer.ini"; Section: "Plattenkoffer"; Key: "Version"; String: "{#AppVersion}"; Flags: uninsdeletesection
@@ -36,6 +44,7 @@ Name: "desktopicon"; Description: "Desktop-Symbol erstellen"
 Name: "migrate"; Description: "Einstellungen und Downloadarchiv aus D:\YT-DLP übernehmen"; Check: HasLegacy
 
 [Files]
+Source: "Nutzungshinweis.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "Lizenzen\*"; DestDir: "{app}\Lizenzen"; Flags: ignoreversion
 Source: "plattenkoffer-banner.png"; DestDir: "{app}"; Flags: ignoreversion
 Source: "SetArchiv.ico"; DestDir: "{app}"; Flags: ignoreversion
@@ -68,6 +77,33 @@ Name: "{userdesktop}\Plattenkoffer"; Filename: "{sys}\WindowsPowerShell\v1.0\pow
 [Code]
 var
   NeedYt, NeedFFmpeg, NeedDeno: Boolean;
+
+function UsageAcknowledgementPath: String;
+begin
+#ifdef IsolatedTest
+  Result := ExpandConstant('{app}\nutzungshinweis-bestaetigt.ini');
+#else
+  Result := ExpandConstant('{localappdata}\SetArchiv\config\nutzungshinweis-bestaetigt.ini');
+#endif
+end;
+
+function HasUsageAcknowledgement: Boolean;
+begin
+  Result := GetIniString('Nutzungshinweis', 'Version', '', UsageAcknowledgementPath) = '2026-11-21.1';
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if (CurStep = ssPostInstall) and not WizardSilent then begin
+    ForceDirectories(ExtractFileDir(UsageAcknowledgementPath));
+    if WizardForm.LicenseAcceptedRadio.Checked then begin
+      if not SetIniString('Nutzungshinweis', 'Version', '2026-11-21.1', UsageAcknowledgementPath) then
+        Log('Die Bestätigung des Nutzungshinweises konnte nicht gespeichert werden.');
+      SetIniString('Nutzungshinweis', 'Zeitpunkt', GetDateTimeString('yyyy-mm-dd hh:nn:ss', '-', ':'), UsageAcknowledgementPath);
+      SetIniString('Nutzungshinweis', 'SetupVersion', '{#AppVersion}', UsageAcknowledgementPath);
+    end;
+  end;
+end;
 
 function InstallYt: Boolean;
 begin
@@ -139,6 +175,11 @@ var
   FreeBytes, TotalBytes, RequiredBytes: Int64;
 begin
   Result := '';
+  if (WizardSilent and not HasUsageAcknowledgement) or
+    (not WizardSilent and not WizardForm.LicenseAcceptedRadio.Checked) then begin
+    Result := 'Bitte das Setup interaktiv starten und den Hinweis zur rechtmäßigen Nutzung bestätigen. Unbeaufsichtigte Updates setzen eine bereits bestätigte Fassung voraus.';
+    exit;
+  end;
   if not CheckLegacyPath then begin
     Result := 'Bitte einen separaten Programmordner außerhalb von D:\YT-DLP wählen.';
     exit;
