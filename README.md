@@ -18,9 +18,11 @@ Plattenkoffer wird unabhängig entwickelt und steht in keiner Verbindung zu YouT
 
 Die Nutzung von Plattenkoffer ist kostenlos. Wenn du die Weiterentwicklung unterstützen möchtest, kannst du freiwillig [über Ko-fi](https://ko-fi.com/mindgamer49330) beitragen.
 
-Die beschriebenen Funktionen beziehen sich auf den Entwicklungsstand 0.5.0. Die Sammlung verwendet das am 22. November 2026 beschlossene Design mit kompakter Filterauswahl, sichtbaren aktiven Filtern, Coverkarten, rechter Detailansicht und durchgehendem Player. Unter **Ansicht** lassen sich Kachelgröße und die Auswahl aller sichtbaren Titel öffnen. Bei ausgewählten Titeln erscheinen die bisherigen Mehrfachaktionen.
+Die beschriebenen Funktionen beziehen sich auf den Entwicklungsstand 0.5.1. Die Sammlung verwendet das am 22. November 2026 beschlossene Design mit kompakter Filterauswahl, sichtbaren aktiven Filtern, Coverkarten, rechter Detailansicht und durchgehendem Player. Unter **Ansicht** lassen sich Kachelgröße und die Auswahl aller sichtbaren Titel öffnen. Bei ausgewählten Titeln erscheinen die bisherigen Mehrfachaktionen.
 
 **Bibliothekspflege** ergänzt einen lesenden Bibliotheksscan, Quellenvergleich, Cover- und Duplikatdiagnose sowie freigabepflichtige Einzel- und Stapelreparaturen. Vor jeder Änderung werden vollständige Originalbackups verifiziert. Opus/Ogg und AAC/M4A lassen sich ohne Audiokodierung bearbeiten; weitere Formate bleiben zunächst nur lesend. Audiohash, Streamparameter und geschriebene Tags werden geprüft, Originalpfade bleiben erhalten. Neue Downloads erhalten verbindliche Tags und PK-JSON samt Abschlussprüfung. Bedienung, Wiederherstellung und Einschränkungen stehen in [Library Health](docs/LIBRARY-HEALTH.md).
+
+Version 0.5.1 ergänzt semantische Metadatenprüfung und Unicode/NFC, VirtualDJ-2026-Datenbankkorrekturen mit vollständigem XML-Inhaltsvergleich, MP3-JPEG-Covereinbettung ohne Audiokodierung sowie verifizierte Duplikatquarantäne. Jede Datenbankänderung und Archivierung benötigt eine eigene Vorschau und Freigabe. [Umfang, technische Grenzen und Rückgängig-Anleitung](docs/LIBRARY-HEALTH-02.md)
 
 
 KI-gestützte Einordnung und Track-Erkennung sind für später vorgemerkt. Der aktuelle Funktionsumfang benötigt dafür keine kostenpflichtigen Dienste. [Planungsstand und offene Punkte](docs/TRACK-ERKENNUNG.md)

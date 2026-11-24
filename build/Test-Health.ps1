@@ -11,11 +11,13 @@ if($DownloadTools){
 }
 if(!$FFmpeg -or !$Probe){throw 'FFmpeg und FFprobe mit absoluten Pfaden übergeben oder -DownloadTools verwenden.'}
 $powershell=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
-foreach($test in @('Health.Tests.ps1','Health.Web.Tests.ps1')){
+foreach($test in @('Health.Tests.ps1','Health02.Tests.ps1','Health.Web.Tests.ps1')){
     & $powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "tests/$test") -FFmpeg $FFmpeg -Probe $Probe
     if($LASTEXITCODE){throw "Test fehlgeschlagen: $test"}
 }
 if(!$SkipUI){
     & node (Join-Path $PSScriptRoot 'tests/Health.UI.cjs')
     if($LASTEXITCODE){throw 'Health-UI-Test fehlgeschlagen.'}
+    & node (Join-Path $PSScriptRoot 'tests/Health02.UI.cjs')
+    if($LASTEXITCODE){throw 'Health-02-UI-Test fehlgeschlagen.'}
 }

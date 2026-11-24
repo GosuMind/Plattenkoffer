@@ -45,4 +45,18 @@ Invoke-WebHealth @{command='health-restore-preview';ids=@("$id/$($op.Id)")};Fini
 if(!$web.Health.Restore){throw $web.Health.Status}
 Invoke-WebHealth @{command='health-restore-approve';token=$web.Health.Restore.Id;approved=$true};Finish
 if((Read-PkHealthJson (Join-Path $directory 'repair.json')).State -ne 'RESTORED'){throw $web.Health.Status}
+$fixture02=Get-ChildItem "$root/work" -Directory -Filter 'health02-*'|Sort-Object LastWriteTime -Descending|Select-Object -First 1
+if($fixture02){
+    $base=$fixture02.FullName
+    $web.Health.Options=@{Root=(Join-Path $base 'Musik');FFmpeg=$FFmpeg;Probe=$Probe;Storage=(Join-Path $base 'reports');BackupRoot=(Join-Path $base 'backups');QuarantineRoot=(Join-Path $base 'quarantine');CoverRoot=(Join-Path $base 'covers');VdjDatabase=(Join-Path $base 'database-True.xml');Deep=$false}
+    $web.Health.Report=Read-PkHealthJson (Join-Path $base 'reports/scan.json')
+    $dbHash=Get-PkHealthFileHash $web.Health.Options.VdjDatabase
+    Invoke-WebHealth @{command='health-vdj-analyze'};Finish
+    if(!$web.Health.Vdj -or !$web.Health.Vdj.Writable){throw $web.Health.Status}
+    Invoke-WebHealth @{command='health-vdj-plan';indices=@(0)};Finish
+    if(!$web.Health.SpecialPlan -or $web.Health.SpecialPlan.Type -ne 'VDJ'){throw $web.Health.Status}
+    Invoke-WebHealth @{command='health-special-approve';token='wrong';approved=$true}
+    if($web.Health.Worker){throw 'Wrong special approval token accepted'}
+    if((Get-PkHealthFileHash $web.Health.Options.VdjDatabase) -cne $dbHash){throw 'Read-only VDJ background operations changed database'}
+}
 'PASS: real GUI controller, background runspaces, scan serialization, approval token checks, repair and restore bridge.'

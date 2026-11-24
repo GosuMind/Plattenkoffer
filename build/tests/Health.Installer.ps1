@@ -25,7 +25,7 @@ if($notice -notmatch 'ausschließlich für rechtmäßige Nutzung' -or $notice -n
 if([IO.File]::ReadAllText($ack) -notmatch 'Zeitpunkt=2026-11-21 12:00:00'){throw 'Silent update changed original acknowledgement time'}
 $expected=(Select-String -LiteralPath (Join-Path $root 'setup/SetArchiv.iss') -Pattern '^#define AppVersion "(\d+\.\d+\.\d+)"$').Matches[0].Groups[1].Value
 if((Get-Content (Join-Path $app 'plattenkoffer.ini') -Raw) -notmatch ('Version='+[regex]::Escape($expected))){throw 'Wrong installed version'}
-foreach($name in @('DJ-Sets-Health.ps1','DJ-Sets-HealthRepair.ps1','DJ-Sets-HealthWeb.ps1','DJ-Sets-DownloadValidation.ps1','ui/health.js')){
+foreach($name in @('DJ-Sets-Health.ps1','DJ-Sets-HealthRepair.ps1','DJ-Sets-HealthWeb.ps1','DJ-Sets-HealthVdj.ps1','DJ-Sets-HealthSemantic.ps1','DJ-Sets-HealthQuarantine.ps1','DJ-Sets-HealthCover.ps1','DJ-Sets-HealthJson.ps1','DJ-Sets-HealthReports.ps1','DJ-Sets-DownloadValidation.ps1','ui/health.js','ui/health02.js')){
  if(!(Test-Path -LiteralPath (Join-Path $app $name))){throw "Missing installed module: $name"}
 }
 'Installer OK: fresh silent installation blocked, acknowledged update succeeds, full notice and timestamp installed'

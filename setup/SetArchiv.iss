@@ -4,7 +4,7 @@ AppName=Plattenkoffer
 AppPublisher=Mindgamer
 SetupIconFile=SetArchiv.ico
 UninstallDisplayIcon={app}\SetArchiv.ico
-#define AppVersion "0.5.0"
+#define AppVersion "0.5.1"
 #ifndef UpdateSignerHash
   #define UpdateSignerHash ""
 #endif
