@@ -41,6 +41,6 @@ function Assert-PkPublishedDownload([string]$Folder,$Row) {
     if ($files.Count -ne 1 -or !$pk.Artist -or !$pk.Title -or $pk.Artist -cne ([string]$Row.Artist).Trim() -or $pk.Title -cne ([string]$Row.Title).Trim()) { throw 'Download darf ohne konsistente Pflichtmetadaten nicht archiviert werden.' }
     $options=@{FFmpeg=$ffmpeg;Probe=$probe}
     $tags=Get-PkHealthTags (Get-PkHealthProbe $files[0].FullName $options $null)
-    if($tags.Artist -cne $pk.Artist -or $tags.Title -cne $pk.Title){throw 'Download-JSON und Audio-Tags stimmen nicht überein.'}
+    if((Get-PkHealthMetadataStatus $tags $pk) -notin @('METADATA_EXACT_MATCH','METADATA_SEMANTIC_MATCH')){throw 'Download-JSON und Audio-Tags sind nicht semantisch konsistent.'}
     $null=Invoke-PkHealthTool $ffmpeg @('-v','error','-xerror','-err_detect','explode','-nostdin','-i',$files[0].FullName,'-map','0:a','-f','null','-') $null 14400
 }

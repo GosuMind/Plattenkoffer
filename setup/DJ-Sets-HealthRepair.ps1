@@ -15,7 +15,7 @@ function New-PkHealthPlan($Options,$Report,$Requests) {
         $path=Assert-PkHealthScope $record.Path $Options.Root
         if ($record.Integrity -eq 'FAILED' -or 'INVALID_JSON' -in $record.Codes) { throw 'Audio- oder JSON-Fehler bitte zuerst manuell klären.' }
         $changes=ConvertTo-PkHealthMap $request.Changes
-        if (!$changes.Count -and !$request.Json -and !$request.CoverPath) {
+        if (!$changes.Count -and !$request.Json -and !$request.CoverPath -and !$request.EmbedCover) {
             foreach ($field in @('Artist','Title')) {
                 if (!$record.Tags.$field -and $record.Resolved.Values.$field -and $field -notin $record.Resolved.Conflicts) { $changes[$field]=$record.Resolved.Values.$field }
             }
@@ -26,7 +26,10 @@ function New-PkHealthPlan($Options,$Report,$Requests) {
             if ($field -in @('Artist','Title') -and !$changes[$field].Trim()) { throw 'Interpret und Titel dürfen nicht geleert werden.' }
             if ([string]$record.Tags.$field -ceq $changes[$field] -and [string]$record.Pk.$field -ceq $changes[$field]) { $changes.Remove($field) }
         }
-        if (!$changes.Count -and !$request.Json -and !$request.CoverPath) { continue }
+        if (!$changes.Count -and !$request.Json -and !$request.CoverPath -and !$request.EmbedCover) { continue }
+        if(!(Get-PkHealthFolder $path $Options.Root).Valid){throw 'Alte oder unbekannte Ordnerstruktur: keine automatische gemeinsame JSON-Datei schreiben.'}
+        if($request.EmbedCover -and ([IO.Path]::GetExtension($path) -ine '.mp3' -or $record.Codec -ne 'mp3' -or $changes.Count -gt 0)){throw 'Neu eingebettete Cover sind ausschließlich für MP3 ohne gleichzeitige Tagänderung freigegeben.'}
+        if($request.EmbedCover -and !$request.CoverPath){throw 'Ein Cover für die MP3-Einbettung auswählen.'}
         if ($changes.Count -and !$record.Repairable) { throw 'Dieses Format ist nur lesend freigegeben.' }
         if ((Get-PkHealthFileHash $path) -cne $record.FileHash -or (Get-PkHealthStamp $path) -cne $record.Stamp) { throw 'Datei seit dem Scan geändert. Bitte erneut scannen.' }
         $cover=$null
@@ -34,14 +37,15 @@ function New-PkHealthPlan($Options,$Report,$Requests) {
             Assert-SafePath $request.CoverPath
             if (![IO.File]::Exists($request.CoverPath) -or [IO.FileInfo]::new($request.CoverPath).Length -gt 20MB) { throw 'Cover fehlt oder ist zu groß.' }
             if([IO.Path]::GetExtension($request.CoverPath) -notin @('.jpg','.jpeg','.png','.webp')){throw 'Coverformat nicht freigegeben.'}
-            $raw=Invoke-PkHealthTool $Options.Probe @('-v','error','-show_entries','stream=width,height','-of','json','--',$request.CoverPath) $null
+            $raw=Invoke-PkHealthTool $Options.Probe @('-v','error','-show_entries','stream=width,height,codec_name','-of','json','--',$request.CoverPath) $null
             $image=(ConvertFrom-Json $raw).streams|Select-Object -First 1
             if(!$image.width -or !$image.height -or [long]$image.width*$image.height -gt 40000000){throw 'Ungültige Coverabmessungen.'}
-            $cover=@{Path=[IO.Path]::GetFullPath($request.CoverPath);Hash=(Get-PkHealthFileHash $request.CoverPath)}
+            $cover=@{Path=[IO.Path]::GetFullPath($request.CoverPath);Hash=(Get-PkHealthFileHash $request.CoverPath);Codec=$image.codec_name;Width=$image.width;Height=$image.height}
         }
         $originals=@(Get-Item -LiteralPath $path)+@(Get-PkHealthSidecars $path)
         $estimate=($originals | Measure-Object Length -Sum).Sum;$bytes+=$estimate
-        $items.Add(@{Id=$record.Id;Path=$path;FileHash=$record.FileHash;Stamp=$record.Stamp;Before=$record.Tags;Changes=$changes;Sources=$record.Resolved.Evidence;Conflicts=@($record.Resolved.Conflicts);Json=[bool]$request.Json;Cover=$cover;EstimatedBytes=$estimate;State='AWAITING_APPROVAL'})
+        $sidecars=@(Get-PkHealthSidecars $path|ForEach-Object {@{Path=$_.FullName;Hash=(Get-PkHealthFileHash $_.FullName)}})
+        $items.Add(@{Id=$record.Id;Path=$path;FileHash=$record.FileHash;Stamp=$record.Stamp;SidecarHashes=$sidecars;Before=$record.Tags;Changes=$changes;Sources=$record.Resolved.Evidence;Conflicts=@($record.Resolved.Conflicts);Json=[bool]$request.Json;Cover=$cover;CoverOrigin=[string]$request.CoverOrigin;EmbedCover=[bool]$request.EmbedCover;EstimatedBytes=$estimate;State='AWAITING_APPROVAL'})
     }
     if (!$items.Count) { throw 'Keine eindeutigen oder ausgewählten Änderungen. Eintrag bearbeiten oder JSON-Rekonstruktion auswählen.' }
     if($Options.BackupLimitGB -gt 0 -and (Get-PkHealthBackupUsage $Options)+$bytes -gt [double]$Options.BackupLimitGB*1GB){throw 'Das konfigurierte Backup-Speicherlimit würde überschritten. Vorhandene Backups werden nicht automatisch gelöscht.'}
@@ -63,7 +67,7 @@ function Assert-PkHealthEquivalent($Before,$After,[string[]]$BeforeHashes,[strin
     $beforeStreams=@($Before.streams);$afterStreams=@($After.streams)
     if ($beforeStreams.Count -ne $afterStreams.Count) { throw 'Anzahl der Streams verändert.' }
     for ($i=0;$i -lt $beforeStreams.Count;$i++) {
-        foreach ($key in @('codec_type','codec_name','profile','sample_rate','channels','channel_layout','width','height','pix_fmt')) {
+        foreach ($key in @('codec_type','codec_name','profile','sample_rate','channels','channel_layout','time_base','bits_per_sample','bits_per_raw_sample','extradata_size','extradata_hash','initial_padding','trailing_padding','width','height','pix_fmt')) {
             if ([string]$beforeStreams[$i].$key -cne [string]$afterStreams[$i].$key) { throw "Streamparameter verändert: $key" }
         }
         if ([int]$beforeStreams[$i].disposition.attached_pic -ne [int]$afterStreams[$i].disposition.attached_pic) { throw 'Eingebettetes Cover verändert.' }
@@ -76,7 +80,7 @@ function Assert-PkHealthEquivalent($Before,$After,[string[]]$BeforeHashes,[strin
 function Assert-PkHealthWrittenTags($Before,$After,$Changes) {
     foreach ($field in (Get-PkHealthFields).Keys) {
         $expected=if ($Changes.ContainsKey($field)) { $Changes[$field] } else { $Before[$field] }
-        if ([string]$After[$field] -cne [string]$expected) { throw "Tag-Prüfung fehlgeschlagen: $field" }
+        if (([string]$After[$field]).Normalize([Text.NormalizationForm]::FormC) -cne ([string]$expected).Normalize([Text.NormalizationForm]::FormC)) { throw "Tag-Prüfung fehlgeschlagen: $field" }
     }
 }
 
@@ -167,21 +171,35 @@ function Invoke-PkHealthRepairItem($Options,$Item,[string]$PlanId,$Control) {
             $manifest.AudioAfter=$afterHashes;$manifest.AfterTags=$afterTags;$manifest.FileAfter=Get-PkHealthFileHash $temp
         } else { $manifest.AudioAfter=$beforeHashes;$manifest.AfterTags=$beforeTags;$manifest.FileAfter=$Item.FileHash }
         if ($Item.Cover) {
-            $null=Invoke-PkHealthTool $Options.FFmpeg @('-v','error','-nostdin','-n','-i',$Item.Cover.Path,'-frames:v','1','-q:v','2',$coverTemp) $Control
+            if($Item.Cover.Codec -eq 'mjpeg'){[IO.File]::Copy($Item.Cover.Path,$coverTemp,$false)}
+            else{$null=Invoke-PkHealthTool $Options.FFmpeg @('-v','error','-nostdin','-n','-i',$Item.Cover.Path,'-frames:v','1','-q:v','2',$coverTemp) $Control}
             $raw=Invoke-PkHealthTool $Options.Probe @('-v','error','-show_entries','stream=width,height','-of','json','--',$coverTemp) $Control
             $image=(ConvertFrom-Json $raw).streams | Select-Object -First 1
             if (!$image.width -or !$image.height -or [long]$image.width*$image.height -gt 40000000) { throw 'Ungültiges Cover.' }
         }
-        $pk=if ([IO.File]::Exists($jsonPath)) { Read-PkHealthJson $jsonPath } else { [pscustomobject]@{} }
+        if($Item.EmbedCover){
+            if([IO.Path]::GetExtension($path) -ine '.mp3' -or @($beforeProbe.streams|Where-Object {$_.codec_type -ne 'audio' -and $_.disposition.attached_pic -ne 1}).Count){throw 'MP3-Streamstruktur nicht für Coveraustausch freigegeben.'}
+            New-PkMp3CoverOutput $path $coverTemp $temp $Options $Control
+            $afterProbe=Get-PkHealthProbe $temp $Options $Control;$afterHashes=Get-PkHealthAudioHashes $temp $Options $Control
+            Assert-PkMp3CoverEquivalent $beforeProbe $afterProbe $beforeHashes $afterHashes
+            Assert-PkHealthWrittenTags $beforeTags (Get-PkHealthTags $afterProbe) $changes
+            $manifest.AudioAfter=$afterHashes;$manifest.FileAfter=Get-PkHealthFileHash $temp;$manifest.Method='MP3 JPEG-Cover · Audio Stream Copy'
+        }
+        $pk=if ([IO.File]::Exists($jsonPath)) { Read-PkHealthJson $jsonPath } else { New-PkHealthRecoveredJson $path $Options $Control }
+        $part=@($pk.Parts|Where-Object {$_.FileName -ceq [IO.Path]::GetFileName($path)})|Select-Object -First 1
+        $metadataTarget=if($part){$part.Tags}else{$pk}
         $sources=ConvertTo-PkHealthMap $pk.MetadataSources
+        $changeSources=if($part){ConvertTo-PkHealthMap $part.MetadataSources}else{$sources}
+        if($Item.Cover){$sources.Cover=@{Provider=$(if($Item.CoverOrigin){$Item.CoverOrigin}else{'Manueller Coverimport'});Value='plattenkoffer-cover.jpg';ConfirmedAt=[datetime]::UtcNow.ToString('o');Hash=$Item.Cover.Hash;Embedded=[bool]$Item.EmbedCover}}
         $confirmed=[datetime]::UtcNow.ToString('o')
         foreach ($field in $changes.Keys) {
-            $pk | Add-Member NoteProperty $field $changes[$field] -Force
-            $sources[$field]=@{Provider='Plattenkoffer Health';OriginalValue=[string]$beforeTags[$field];ProposedValue=$changes[$field];Value=$changes[$field];ConfirmedAt=$confirmed;Confidence='VERIFIED';Manual=$true;Evidence=$Item.Sources.$field}
+            $metadataTarget | Add-Member NoteProperty $field $changes[$field] -Force
+            $changeSources[$field]=@{Provider='Plattenkoffer Health';OriginalValue=[string]$beforeTags[$field];ProposedValue=$changes[$field];Value=$changes[$field];ConfirmedAt=$confirmed;Confidence='VERIFIED';Manual=$true;Evidence=$Item.Sources.$field}
         }
+        if($part){$part|Add-Member NoteProperty MetadataSources ([pscustomobject]$changeSources) -Force}
         if ($Item.Json -or ![IO.File]::Exists($jsonPath)) {
             foreach ($field in (Get-PkHealthFields).Keys) {
-                if (!$pk.PSObject.Properties[$field] -and $beforeTags[$field]) {
+                if (!$pk.Parts -and !$pk.PSObject.Properties[$field] -and $beforeTags[$field]) {
                     $pk | Add-Member NoteProperty $field $beforeTags[$field]
                     $sources[$field]=@{Provider='Audio-Tags';Value=$beforeTags[$field];ConfirmedAt=$confirmed;Confidence='VERIFIED';Manual=$true}
                 }
@@ -204,12 +222,14 @@ function Invoke-PkHealthRepairItem($Options,$Item,[string]$PlanId,$Control) {
         if ($Control -and $Control.Cancel) { throw [OperationCanceledException]::new('Vorgang abgebrochen.') }
         if ((Get-PkHealthFileHash $path) -cne $Item.FileHash -or (Get-PkHealthStamp $path) -cne $Item.Stamp) { throw 'Original wurde während der Reparatur verändert.' }
         $lock.Dispose();$lock=$null
-        if ($changes.Count) { $touched.Add($path);[IO.File]::Replace($temp,$path,[NullString]::Value) }
+        if ($changes.Count -or $Item.EmbedCover) { $touched.Add($path);[IO.File]::Replace($temp,$path,[NullString]::Value) }
         $touched.Add($jsonPath);Write-PkHealthBytes $jsonPath $jsonBytes
+        if((Get-PkHealthFileHash $jsonPath) -cne $jsonHash){throw 'Geschriebenes PK-JSON stimmt nicht mit dem freigegebenen Ergebnis überein.'}
+        $null=Read-PkHealthJson $jsonPath
         if ($Item.Cover) { $touched.Add($coverPath);Write-PkHealthBytes $coverPath ([IO.File]::ReadAllBytes($coverTemp)) }
         $finalProbe=Get-PkHealthProbe $path $Options $null
         $finalHashes=Get-PkHealthAudioHashes $path $Options $null
-        Assert-PkHealthEquivalent $beforeProbe $finalProbe $beforeHashes $finalHashes
+        if($Item.EmbedCover){Assert-PkMp3CoverEquivalent $beforeProbe $finalProbe $beforeHashes $finalHashes}else{Assert-PkHealthEquivalent $beforeProbe $finalProbe $beforeHashes $finalHashes}
         Assert-PkHealthWrittenTags $beforeTags (Get-PkHealthTags $finalProbe) $changes
         foreach ($file in $manifest.Files) { $file.AfterHash=Get-PkHealthFileHash $file.Path }
         foreach ($file in $manifest.Created) { $file.AfterHash=Get-PkHealthFileHash $file.Path }
@@ -256,10 +276,26 @@ function Invoke-PkHealthPlan($Options,$Plan,$Control) {
     Assert-PkHealthOptions $Options -Writing
     if ($Plan.State -ne 'APPROVED' -or $Plan.Root -ine $Options.Root) { throw 'Ein ausdrücklich freigegebener Plan ist erforderlich.' }
     $results=[Collections.Generic.List[object]]::new()
+    $owned=@{}
     foreach ($item in $Plan.Items) {
         if ($Control -and $Control.Cancel) { break }
         if ($Control) { $Control.Current=$item.Path;$Control.Done=$results.Count;$Control.Total=@($Plan.Items).Count }
-        try { $result=Invoke-PkHealthRepairItem $Options $item $Plan.Id $Control }
+        try {
+            $folder=[IO.Path]::GetDirectoryName($item.Path)
+            if($owned.ContainsKey($folder)){
+                $expected=@{};foreach($sidecar in $item.SidecarHashes){$expected[$sidecar.Path]=$sidecar.Hash}
+                foreach($key in $owned[$folder].Keys){$expected[$key]=$owned[$folder][$key]}
+                $current=@(Get-PkHealthSidecars $item.Path)
+                if($current.Count -ne $expected.Count){throw 'Begleitdateien außerhalb dieses Auftrags verändert.'}
+                foreach($sidecar in $current){if(!$expected.ContainsKey($sidecar.FullName) -or (Get-PkHealthFileHash $sidecar.FullName) -cne $expected[$sidecar.FullName]){throw 'Begleitdateien außerhalb dieses Auftrags verändert.'}}
+                $item.Stamp=Get-PkHealthStamp $item.Path
+            }
+            $result=Invoke-PkHealthRepairItem $Options $item $Plan.Id $Control
+            if($result.State -eq 'COMMITTED'){
+                if(!$owned.ContainsKey($folder)){$owned[$folder]=@{}}
+                foreach($output in @($result.Files)+@($result.Created)){if($output.Path -ine $item.Path){$owned[$folder][$output.Path]=$output.AfterHash}}
+            }
+        }
         catch { $result=@{Id=$item.Id;Path=$item.Path;State='FAILED';Error=$_.Exception.Message} }
         $results.Add($result)
         $Plan.Results=@($results.ToArray())
@@ -274,16 +310,25 @@ function Get-PkHealthRestorePreview($Options,[string[]]$Directories) {
     $items=@(foreach ($directory in $Directories) {
         $manifest=Get-PkHealthBackupManifest $directory $Options
         if ($manifest.State -in @('RESTORED','FAILED','ROLLED_BACK')) { continue }
+        @{Directory=$directory;Manifest=$manifest}
+    })
+    $items=@($items|Sort-Object {$_.Manifest.StartedAt} -Descending)
+    $virtual=@{}
+    foreach($item in $items){
+        $manifest=$item.Manifest
         foreach ($file in $manifest.Files) {
-            $current=if ([IO.File]::Exists($file.Path)) {Get-PkHealthFileHash $file.Path}else{''}
+            if(!$virtual.ContainsKey($file.Path)){$virtual[$file.Path]=if([IO.File]::Exists($file.Path)){Get-PkHealthFileHash $file.Path}else{''}}
+            $current=$virtual[$file.Path]
             if ($current -cne $file.Hash -and $current -cne $file.AfterHash) { throw "Datei nach der Reparatur verändert oder Zustand unklar: $($file.Path). Automatisches Zurücksetzen gesperrt." }
+            $virtual[$file.Path]=$file.Hash
         }
         foreach ($file in $manifest.Created) {
             $null=Assert-PkHealthScope $file.Path $Options.Root
-            if ([IO.File]::Exists($file.Path) -and (!$file.AfterHash -or (Get-PkHealthFileHash $file.Path) -cne $file.AfterHash)) { throw 'Neue Begleitdatei wurde verändert oder Zustand ist unklar.' }
+            if(!$virtual.ContainsKey($file.Path)){$virtual[$file.Path]=if([IO.File]::Exists($file.Path)){Get-PkHealthFileHash $file.Path}else{''}}
+            if ($virtual[$file.Path] -and (!$file.AfterHash -or $virtual[$file.Path] -cne $file.AfterHash)) { throw 'Neue Begleitdatei wurde verändert oder Zustand ist unklar.' }
+            $virtual[$file.Path]=''
         }
-        @{Directory=$directory;Manifest=$manifest}
-    })
+    }
     if (!$items.Count) { throw 'Keine wiederherstellbare Reparatur ausgewählt.' }
     @{Id=[guid]::NewGuid().ToString('N');Root=$Options.Root;State='AWAITING_APPROVAL';Items=$items}
 }

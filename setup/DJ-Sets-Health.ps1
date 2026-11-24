@@ -2,6 +2,12 @@
 function Get-PkHealthFields {
     [ordered]@{Artist='artist';Title='title';Album='album';AlbumArtist='album_artist';Version='version';Label='publisher';Genre='genre';Year='date';Date='release_date';Series='series';Event='event';Location='location';TrackNumber='track';SourceUrl='purl';VideoId='video_id';ISRC='isrc'}
 }
+. (Join-Path $PSScriptRoot 'DJ-Sets-HealthSemantic.ps1')
+. (Join-Path $PSScriptRoot 'DJ-Sets-HealthJson.ps1')
+. (Join-Path $PSScriptRoot 'DJ-Sets-HealthReports.ps1')
+. (Join-Path $PSScriptRoot 'DJ-Sets-HealthCover.ps1')
+. (Join-Path $PSScriptRoot 'DJ-Sets-HealthVdj.ps1')
+. (Join-Path $PSScriptRoot 'DJ-Sets-HealthQuarantine.ps1')
 
 function Get-PkHealthTagKeys([string]$Field) {
     switch($Field){
@@ -27,11 +33,12 @@ function Invoke-PkHealthTool([string]$Tool,[string[]]$Arguments,$Control,[int]$T
     $start=[Diagnostics.ProcessStartInfo]::new()
     $start.FileName=$Tool; $start.UseShellExecute=$false; $start.CreateNoWindow=$true
     $start.RedirectStandardOutput=$true; $start.RedirectStandardError=$true
-    $start.StandardOutputEncoding=[Text.UTF8Encoding]::new($false)
-    $start.StandardErrorEncoding=[Text.UTF8Encoding]::new($false)
+    $start.StandardOutputEncoding=[Text.UTF8Encoding]::new($false,$true)
+    $start.StandardErrorEncoding=[Text.UTF8Encoding]::new($false,$true)
     # Health processing is local. Do not let media open remote URLs implicitly.
     $localArguments=@('-protocol_whitelist','file,pipe')+$Arguments
-    $start.Arguments=($localArguments | ForEach-Object { ConvertTo-PkHealthArgument $_ }) -join ' '
+    if($start.PSObject.Properties['ArgumentList']){foreach($argument in $localArguments){[void]$start.ArgumentList.Add([string]$argument)}}
+    else{$start.Arguments=($localArguments | ForEach-Object { ConvertTo-PkHealthArgument $_ }) -join ' '}
     $process=[Diagnostics.Process]::new();$process.StartInfo=$start
     try {
         [void]$process.Start();$output=$process.StandardOutput.ReadToEndAsync();$errors=$process.StandardError.ReadToEndAsync()
@@ -43,7 +50,8 @@ function Invoke-PkHealthTool([string]$Tool,[string[]]$Arguments,$Control,[int]$T
                 throw 'Zeitlimit des Audiowerkzeugs überschritten.'
             }
         }
-        $text=$output.GetAwaiter().GetResult();$errorText=$errors.GetAwaiter().GetResult()
+        try{$text=$output.GetAwaiter().GetResult();$errorText=$errors.GetAwaiter().GetResult()}
+        catch{throw [IO.InvalidDataException]::new('TOOL_ENCODING_ERROR: Werkzeugausgabe konnte nicht strikt als UTF-8 gelesen werden. Musikdatei nicht als beschädigt bewertet.', $_.Exception)}
         if ($process.ExitCode -ne 0) { throw "Audiowerkzeug meldet Fehler $($process.ExitCode): $($errorText.Substring(0,[Math]::Min(1200,$errorText.Length)))" }
         $text
     } finally { $process.Dispose() }
@@ -123,19 +131,19 @@ function Assert-PkHealthOptions($Options,[switch]$Writing) {
         Assert-SafePath $tool
         if (![IO.File]::Exists($tool)) { throw "Werkzeug fehlt: $tool" }
     }
-    foreach ($path in @($Options.Storage,$Options.BackupRoot)) {
+    foreach ($path in @($Options.Storage,$Options.BackupRoot,$Options.QuarantineRoot,$Options.CoverRoot)|Where-Object {$_}) {
         Assert-SafePath $path
         $full=[IO.Path]::GetFullPath($path).TrimEnd('\')+'\'
         $root=[IO.Path]::GetFullPath($Options.Root).TrimEnd('\')+'\'
         if ($full.StartsWith($root,[StringComparison]::OrdinalIgnoreCase) -or $root.StartsWith($full,[StringComparison]::OrdinalIgnoreCase)) {
-            throw 'Berichte und Reparaturbackups müssen getrennt von der Musikbibliothek liegen.'
+                throw 'Berichte, Backups, Quarantäne und Cover-Arbeitsordner müssen getrennt von der Musikbibliothek liegen.'
         }
     }
 }
 
 function Get-PkHealthProbe([string]$Path,$Options,$Control) {
     Assert-SafePath $Path
-    $json=Invoke-PkHealthTool $Options.Probe @('-v','error','-show_format','-show_streams','-of','json','--',$Path) $Control
+    $json=Invoke-PkHealthTool $Options.Probe @('-v','error','-show_format','-show_streams','-show_data_hash','sha256','-of','json','--',$Path) $Control
     $result=ConvertFrom-Json -InputObject $json
     if (!@($result.streams | Where-Object codec_type -eq 'audio').Count) { throw 'Keine Audiospur gefunden.' }
     $result
@@ -214,9 +222,13 @@ function Resolve-PkHealthMetadata($Tags,$Pk,$Info,$Folder,$Options) {
         if ($field -eq 'Title' -and $videoTitle) { $candidates.Add(@{Source='Videotitel';Value=$videoTitle;Confidence='LOW_CONFIDENCE'}) }
         $evidence[$field]=@($candidates.ToArray())
         $values=@($candidates | ForEach-Object { $_.Value.Trim().ToLowerInvariant() } | Select-Object -Unique)
-        if ($values.Count -gt 1) { $conflicts.Add($field) }
-        $confidence[$field]=if($values.Count -gt 1){'CONFLICT'}elseif($candidates.Count){$candidates[0].Confidence}else{'LOW_CONFIDENCE'}
+        $different=$false
+        if($candidates.Count -gt 1){foreach($candidate in $candidates){if(!(Test-PkHealthFieldEquivalent $field $candidates[0].Value $candidate.Value $Pk)){$different=$true}}}
+        if ($different) { $conflicts.Add($field) }
+        $confidence[$field]=if($different){'CONFLICT'}elseif($candidates.Count){$candidates[0].Confidence}else{'LOW_CONFIDENCE'}
         $choice=if ($candidates.Count) { $candidates[0].Value } else { '' }
+        # Keep the existing full audio title when JSON stores its remix separately.
+        if($field -eq 'Title' -and $Tags.Title -and (Test-PkHealthTitleVariant $Tags.Title $Pk)){$choice=$Tags.Title}
         $proposals[$field]=[string]$choice
     }
     @{Values=$proposals;Evidence=$evidence;Confidence=$confidence;Conflicts=@($conflicts.ToArray())}
@@ -227,7 +239,7 @@ function Get-PkHealthRecord([string]$Path,$Options,$Control) {
     $file=Get-Item -LiteralPath $Path
     $folder=Get-PkHealthFolder $Path $Options.Root
     $codes=[Collections.Generic.List[string]]::new();$notes=[Collections.Generic.List[string]]::new()
-    $record=@{Id=(Get-PkHealthId $Path);Path=$Path;Kind=$folder.Kind;Size=$file.Length;Stamp=(Get-PkHealthStamp $Path);ResolverSignature=('1|'+(@($Options.VideoSuffixes) -join '|'));ScannedAt=[datetime]::UtcNow.ToString('o');Codes=@();Notes=@();Tags=@{};Pk=$null;Info=$null;Covers=@();EmbeddedCover=$false;Integrity='UNTESTED';Repairable=$false;FileHash='';AudioHashes=@()}
+    $record=@{Id=(Get-PkHealthId $Path);Path=$Path;Kind=$folder.Kind;Size=$file.Length;Stamp=(Get-PkHealthStamp $Path);ResolverSignature=('2|'+(@($Options.VideoSuffixes) -join '|'));ScannedAt=[datetime]::UtcNow.ToString('o');Codes=@();Notes=@();Tags=@{};Pk=$null;Info=$null;Covers=@();EmbeddedCover=$false;Integrity='UNTESTED';Repairable=$false;FileHash='';AudioHashes=@()}
     if (!$folder.Valid) { $codes.Add('INVALID_PATH') }
     if ($file.BaseName -match '^(audio|source|download)(\.\d+)?$') { $codes.Add('GENERIC_FILENAME') }
     foreach ($item in @(@{Name='plattenkoffer.json';Key='Pk'},@{Name='info.json';Key='Info'})) {
@@ -244,8 +256,10 @@ function Get-PkHealthRecord([string]$Path,$Options,$Control) {
             # private custom JSON fields or credentials. Repair rereads the complete JSON.
             $public=@{}
             if($item.Key -eq 'Pk'){
+                $part=@($json.Parts|Where-Object {$_.FileName -ceq $file.Name})|Select-Object -First 1
                 foreach($field in (Get-PkHealthFields).Keys){if($json.$field){$public[$field]=[string]$json.$field}}
-                $public.HealthConfirmedFields=@(foreach($field in (Get-PkHealthFields).Keys){if($json.MetadataSources.$field.ConfirmedAt -or $json.MetadataSources.$field.Provider -match '^(Manuell|Manual)$'){$field}})
+                if($part){foreach($field in (Get-PkHealthFields).Keys){if($null -ne $part.Tags.$field){$public[$field]=[string]$part.Tags.$field}}}
+                $public.HealthConfirmedFields=@(foreach($field in (Get-PkHealthFields).Keys){$proof=if($part.MetadataSources.$field){$part.MetadataSources.$field}else{$json.MetadataSources.$field};if($proof.ConfirmedAt -or $proof.Provider -match '^(Manuell|Manual)$'){$field}})
             }else{
                 foreach($field in @('title','track','artist','album','album_artist','release_year','publisher','genre','webpage_url','id','isrc','version','series','event','location','tracknumber','release_date')){if($json.$field -is [string] -or $json.$field -is [ValueType]){$public[$field]=$json.$field}}
             }
@@ -278,7 +292,8 @@ function Get-PkHealthRecord([string]$Path,$Options,$Control) {
         if ($record.Duration -le 0 -or !$stream.sample_rate -or !$stream.channels) { throw 'Ungültige Audioparameter.' }
     } catch {
         if ($Control -and $Control.Cancel) { throw }
-        $codes.Add('AUDIO_ERROR');$record.Integrity='FAILED';$record.Repairable=$false;$notes.Add($_.Exception.Message)
+        if($_.Exception.Message -match 'TOOL_ENCODING_ERROR'){$codes.Add('TOOL_ENCODING_ERROR');$record.Integrity='UNTESTED'}else{$codes.Add('AUDIO_ERROR');$record.Integrity='FAILED'}
+        $record.Repairable=$false;$notes.Add($_.Exception.Message)
     }
     $covers=@(foreach ($cover in @(Get-PkHealthSidecars $Path | Where-Object Extension -in @('.jpg','.jpeg','.png','.webp','.avif'))) {
         $image=@{Path=$cover.FullName;Size=$cover.Length;Valid=$false;Width=0;Height=0}
@@ -288,15 +303,20 @@ function Get-PkHealthRecord([string]$Path,$Options,$Control) {
             $picture=(ConvertFrom-Json $raw).streams | Select-Object -First 1
             if (!$picture.width -or !$picture.height -or [long]$picture.width*$picture.height -gt 40000000) { throw 'Ungültige Coverabmessungen.' }
             $image.Valid=$true;$image.Width=$picture.width;$image.Height=$picture.height
-        } catch { if ($Control -and $Control.Cancel) {throw};if ('INVALID_COVER' -notin $codes) {$codes.Add('INVALID_COVER')} }
+        } catch { if ($Control -and $Control.Cancel) {throw};if($_.Exception.Message -match 'TOOL_ENCODING_ERROR'){if('TOOL_ENCODING_ERROR' -notin $codes){$codes.Add('TOOL_ENCODING_ERROR')}}elseif ('INVALID_COVER' -notin $codes) {$codes.Add('INVALID_COVER')} }
         $image
     })
     $record.Covers=$covers
     if (!$covers.Count -and !$record.EmbeddedCover) { $codes.Add('MISSING_COVER') }
     $record.Resolved=Resolve-PkHealthMetadata $record.Tags $record.Pk $record.Info $folder $Options
     foreach ($field in @('Artist','Title','Album','Year','Genre','Label','Version')) {
-        if ($record.Pk.$field -and $record.Tags[$field] -and $record.Pk.$field -ine $record.Tags[$field]) { if ('JSON_MISMATCH' -notin $codes) {$codes.Add('JSON_MISMATCH')} }
+        if ($record.Pk.$field -and $record.Tags[$field] -and !(Test-PkHealthFieldEquivalent $field $record.Pk.$field $record.Tags[$field] $record.Pk)) { if ('JSON_MISMATCH' -notin $codes) {$codes.Add('JSON_MISMATCH')} }
     }
+    $record.MetadataStatus=Get-PkHealthMetadataStatus $record.Tags $record.Pk;$codes.Add($record.MetadataStatus)
+    if('MISSING_ARTIST' -in $codes -or 'MISSING_TITLE' -in $codes){$codes.Add('AUDIO_METADATA_MISSING')}
+    if('INVALID_TAG' -in $codes){$codes.Add('AUDIO_METADATA_INVALID')}
+    if($record.MetadataStatus -eq 'METADATA_CONFLICT'){$codes.Add('AUDIO_METADATA_CONFLICT')}
+    foreach($field in @('Artist','Title','Album','Version','Genre','Label')){if(Test-PkHealthSuspiciousUnicode ([string]$record.Tags[$field])){if('UNICODE_REVIEW_REQUIRED' -notin $codes){$codes.Add('UNICODE_REVIEW_REQUIRED');$notes.Add('Verdächtige Zeichenfolge: Quellen prüfen. Keine automatische Zeichenersetzung.')}}}
     if ($record.Resolved.Conflicts.Count) { $codes.Add('TAG_MISMATCH');$codes.Add('MANUAL_REVIEW') }
     $record.Codes=@($codes.ToArray() | Select-Object -Unique);$record.Notes=@($notes.ToArray())
     $record
@@ -337,7 +357,7 @@ function Update-PkHealthDuplicates($Records) {
         }
     }
     foreach ($record in $Records) {
-        $problems=@($record.Codes | Where-Object { $_ -notin @('GENERIC_FILENAME','EMBEDDED_COVER_MISSING') })
+        $problems=@(Get-PkHealthIssueCodes $record.Codes)
         if (!$problems.Count -and $record.Integrity -eq 'DECODE_CHECKED') { $record.Codes+='HEALTHY' }
     }
 }
@@ -364,7 +384,7 @@ function Invoke-PkHealthScan($Options,$Control,[switch]$Incremental) {
             if($Incremental -and [IO.File]::Exists($checkpoint)){
                 try{$savedRecord=Read-PkHealthJson $checkpoint;if($savedRecord.Path -ieq $file){$cached=$savedRecord}}catch{}
             }
-            if ($cached -and $cached.ResolverSignature -ceq ('1|'+(@($Options.VideoSuffixes) -join '|')) -and $cached.Stamp -ceq (Get-PkHealthStamp $file) -and (!$Options.Deep -or $cached.Integrity -eq 'DECODE_CHECKED') -and $cached.Integrity -ne 'FAILED') {
+            if ($cached -and $cached.ResolverSignature -ceq ('2|'+(@($Options.VideoSuffixes) -join '|')) -and $cached.Stamp -ceq (Get-PkHealthStamp $file) -and (!$Options.Deep -or $cached.Integrity -eq 'DECODE_CHECKED') -and $cached.Integrity -ne 'FAILED') {
                 # Normalize deserialized objects so updates use the same mutable representation.
                 $record=@{};foreach($p in $cached.PSObject.Properties){$record[$p.Name]=$p.Value}
             } else { $record=Get-PkHealthRecord $file $Options $Control }
@@ -398,5 +418,7 @@ function Invoke-PkHealthScan($Options,$Control,[switch]$Incremental) {
 function Get-PkHealthSummary($Report) {
     $records=@($Report.Records);$fully=@($records | Where-Object Integrity -eq 'DECODE_CHECKED')
     $healthy=@($fully | Where-Object {'HEALTHY' -in $_.Codes}).Count
-    @{Files=$records.Count;Tracks=@($records|Where-Object Kind -eq 'Track').Count;Sets=@($records|Where-Object Kind -eq 'Set').Count;Bytes=($records|ForEach-Object {[long]$_.Size}|Measure-Object -Sum).Sum;FullyChecked=$fully.Count;Healthy=$healthy;NeedsReview=@($records|Where-Object {@($_.Codes|Where-Object {$_ -notin @('GENERIC_FILENAME','EMBEDDED_COVER_MISSING','HEALTHY')}).Count}).Count;AudioErrors=@($records|Where-Object {'AUDIO_ERROR' -in $_.Codes}).Count;Score=$(if($fully.Count){[Math]::Round(100*$healthy/$fully.Count,1)}else{$null});MissingTags=@($records|Where-Object {'MISSING_ARTIST' -in $_.Codes -or 'MISSING_TITLE' -in $_.Codes}).Count;MissingJson=@($records|Where-Object {'MISSING_JSON' -in $_.Codes}).Count;MissingCovers=@($records|Where-Object {'MISSING_COVER' -in $_.Codes}).Count;Conflicts=@($records|Where-Object {'TAG_MISMATCH' -in $_.Codes}).Count;Duplicates=@($records|Where-Object {'DUPLICATE_AUDIO' -in $_.Codes -or 'POSSIBLE_DUPLICATE' -in $_.Codes}).Count}
+    $summary=@{Files=$records.Count;Tracks=@($records|Where-Object Kind -eq 'Track').Count;Sets=@($records|Where-Object Kind -eq 'Set').Count;Bytes=($records|ForEach-Object {[long]$_.Size}|Measure-Object -Sum).Sum;FullyChecked=$fully.Count;Healthy=$healthy;NeedsReview=@($records|Where-Object {@(Get-PkHealthIssueCodes $_.Codes).Count}).Count;AudioErrors=@($records|Where-Object {'AUDIO_ERROR' -in $_.Codes}).Count;Score=$(if($fully.Count){[Math]::Round(100*$healthy/$fully.Count,1)}else{$null});MissingTags=@($records|Where-Object {'MISSING_ARTIST' -in $_.Codes -or 'MISSING_TITLE' -in $_.Codes}).Count;MissingJson=@($records|Where-Object {'MISSING_JSON' -in $_.Codes}).Count;MissingCovers=@($records|Where-Object {'MISSING_COVER' -in $_.Codes}).Count;Conflicts=@($records|Where-Object {'TAG_MISMATCH' -in $_.Codes}).Count;Duplicates=@($records|Where-Object {'DUPLICATE_AUDIO' -in $_.Codes -or 'POSSIBLE_DUPLICATE' -in $_.Codes}).Count}
+    $summary.SemanticMatches=@($records|Where-Object {'METADATA_SEMANTIC_MATCH' -in $_.Codes}).Count
+    $summary
 }
