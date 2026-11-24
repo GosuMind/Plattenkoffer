@@ -321,7 +321,7 @@ function Complete-WebExport {
 
 function Invoke-WebCollectionCommand($Message) {
     if ($Message.command -eq 'health' -or $Message.command -like 'health-*') { Invoke-WebHealth $Message;return }
-    if($web.Health.Worker -and $web.Health.Operation -in @('repair','restore') -and $Message.command -in @('play','toggle','seek','playlist-play','player-next','player-previous')){throw 'Während einer Reparatur oder Wiederherstellung bleibt die Wiedergabe gestoppt.'}
+    if($web.Health.Worker -and $web.Health.Operation -in @('repair','restore','vdj-repair','vdj-restore','quarantine','quarantine-restore') -and $Message.command -in @('play','toggle','seek','playlist-play','player-next','player-previous')){throw 'Während einer Reparatur oder Wiederherstellung bleibt die Wiedergabe gestoppt.'}
     if ($web.Health.Worker -and $Message.command -in @('download','convert-start','metadata-apply','delete-confirm','cover-save','cover-reset','edit-submit','move-submit','settings-save','settings-restore','diagnose-yt','diagnose-ffmpeg','diagnose-deno')) {
         throw 'Zuerst die laufende Bibliothekspflege beenden.'
     }

@@ -6,9 +6,10 @@
   const el=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=String(text);return n;};
   const action=(text,fn)=>{const n=el('button',text);n.type='button';n.onclick=fn;return n;};
   const labels={Artist:'Interpret / DJ',Title:'Titel / Setname',Album:'Album',AlbumArtist:'Album-Interpret',Version:'Version / Remix',Label:'Label / Publisher',Genre:'Genre',Year:'Jahr',Date:'Veröffentlichungsdatum',Series:'Set-Reihe',Event:'Veranstaltung',Location:'Location',TrackNumber:'Tracknummer',SourceUrl:'Quell-URL',VideoId:'Video-ID',ISRC:'ISRC'};
-  const codeLabels={HEALTHY:'Fehlerfrei, vollständig geprüft',MISSING_ARTIST:'Interpret fehlt',MISSING_TITLE:'Titel fehlt',INVALID_TAG:'Ungültiges Tag',TAG_MISMATCH:'Quellen widersprechen sich',MISSING_JSON:'PK-JSON fehlt',INVALID_JSON:'JSON fehlerhaft',JSON_MISMATCH:'JSON / Tags widersprüchlich',MISSING_COVER:'Cover fehlt',INVALID_COVER:'Cover nicht lesbar',EMBEDDED_COVER_MISSING:'Kein eingebettetes Cover',DUPLICATE_AUDIO:'Identische Datei / Audiodaten',POSSIBLE_DUPLICATE:'Mögliches Duplikat',INVALID_PATH:'Ordnerstruktur prüfen',GENERIC_FILENAME:'Generischer Dateiname (Hinweis)',AUDIO_ERROR:'Audio technisch auffällig',UNSUPPORTED_FORMAT:'Nur lesend unterstützt',MANUAL_REVIEW:'Manuell prüfen'};
-  let state={rows:[],backups:[],plans:[],busy:false},tab='overview',page=0,record=null,planToken='',restoreToken='',coverPath='';
+  const codeLabels={METADATA_EXACT_MATCH:'Metadaten exakt konsistent',METADATA_SEMANTIC_MATCH:'Metadaten semantisch konsistent',METADATA_CONFLICT:'Echter Metadatenwiderspruch',METADATA_REVIEW_REQUIRED:'Metadatenprüfung offen',AUDIO_METADATA_MISSING:'Audio-Tags fehlen',AUDIO_METADATA_CONFLICT:'Audio-/PK-Konflikt',UNICODE_REVIEW_REQUIRED:'Zeichenfolge manuell prüfen',HEALTHY:'Fehlerfrei, vollständig geprüft',MISSING_ARTIST:'Interpret fehlt',MISSING_TITLE:'Titel fehlt',INVALID_TAG:'Ungültiges Tag',TAG_MISMATCH:'Quellen widersprechen sich',MISSING_JSON:'PK-JSON fehlt',INVALID_JSON:'JSON fehlerhaft',JSON_MISMATCH:'JSON / Tags widersprüchlich',MISSING_COVER:'Cover fehlt',INVALID_COVER:'Cover nicht lesbar',EMBEDDED_COVER_MISSING:'Kein eingebettetes Cover',DUPLICATE_AUDIO:'Identische Datei / Audiodaten',POSSIBLE_DUPLICATE:'Mögliches Duplikat',INVALID_PATH:'Ordnerstruktur prüfen',GENERIC_FILENAME:'Generischer Dateiname (Hinweis)',AUDIO_ERROR:'Audio technisch auffällig',UNSUPPORTED_FORMAT:'Nur lesend unterstützt',MANUAL_REVIEW:'Manuell prüfen'};
+  let state={rows:[],backups:[],plans:[],busy:false},tab='overview',page=0,record=null,planToken='',restoreToken='',coverPath='',coverOrigin='Manueller Coverimport';
   const selected=new Set(),backupSelected=new Set();
+  let coverBatchIds=[];
   const size=value=>value==null?'–':Number(value)>=1073741824?(Number(value)/1073741824).toFixed(2)+' GB':(Number(value)/1048576).toFixed(1)+' MB';
   const stamp=value=>value?new Date(value).toLocaleString('de-DE'):'Noch kein vollständiger Scan';
   const textCodes=codes=>(codes||[]).map(code=>codeLabels[code]||code).join(' · ');
@@ -41,7 +42,7 @@
       for(const field of ['Artist','Title','Version','Album','Genre','Year'])tr.append(el('td',row.tags?.[field]||'–'));
       const duration=row.duration?Math.floor(row.duration/60)+':'+String(Math.floor(row.duration%60)).padStart(2,'0'):'–';
       for(const value of [row.codec?row.path.split('.').at(-1).toUpperCase()+' / '+row.codec+(typeof row.lossless==='boolean'?(row.lossless?' · verlustfrei':' · verlustbehaftet'):''):'–',row.bitrate?Math.round(Number(row.bitrate)/1000)+' kbit/s':'–',duration,row.rate?(Number(row.rate)/1000)+' kHz / '+row.channels:'–',size(row.size),row.coverCount+' extern'+(row.embeddedCover?' + eingebettet':''),textCodes(row.codes),row.integrity==='DECODE_CHECKED'?'Vollständig dekodiert':row.integrity==='PACKETS_CHECKED'?'Pakete geprüft · kein Tiefenscan':row.integrity,row.path])tr.append(el('td',value));
-      const cell=el('td');cell.append(action(row.repairable?'Prüfen / bearbeiten':'Lesend prüfen',()=>send('health-record',{id:row.id})));tr.append(cell);body.append(tr);
+      const cell=el('td');cell.append(action(row.repairable?'Prüfen / bearbeiten':'Prüfen / Cover',()=>{coverBatchIds=[];send('health-record',{id:row.id});}));tr.append(cell);body.append(tr);
     }
     q('[data-health-page]').textContent=rows.length+' Dateien · Seite '+(page+1)+' / '+Math.max(1,Math.ceil(rows.length/100));
     q('[data-health-prev]').disabled=!page;q('[data-health-next]').disabled=(page+1)*100>=rows.length;
@@ -49,7 +50,7 @@
   }
   function updateSelection(){
     q('[data-health-selected]').textContent=selected.size+' ausgewählt';
-    for(const selector of ['[data-health-batch]','[data-health-json]'])q(selector).disabled=state.busy||!selected.size||state.dirty;
+    for(const selector of ['[data-health-batch]','[data-health-json]','[data-health-quarantine-plan]','[data-health-cover-batch]'])q(selector).disabled=state.busy||!selected.size||state.dirty;
   }
   function render(){
     q('[data-health-status]').textContent=state.status||'';
@@ -59,11 +60,12 @@
     const form=q('[data-health-options]');
     for(const [key,value]of Object.entries(state.options||{}))if(form.elements.namedItem(key))form.elements.namedItem(key).value=Array.isArray(value)?value.join(', '):value;
     const metrics=q('[data-health-summary]');metrics.replaceChildren();
-    const entries=[['Files','Audiodateien'],['Tracks','Tracks'],['Sets','DJ-Sets'],['Healthy','Fehlerfrei · tiefengeprüft'],['NeedsReview','Mit Hinweisen / Prüfbedarf'],['AudioErrors','Technisch auffällig'],['MissingTags','Fehlende Audio-Tags'],['MissingJson','Fehlendes PK-JSON'],['MissingCovers','Fehlende Cover'],['Conflicts','Metadatenkonflikte'],['Duplicates','Duplikatverdacht']];
+    const entries=[['Files','Audiodateien'],['SemanticMatches','Semantisch konsistent'],['Tracks','Tracks'],['Sets','DJ-Sets'],['Healthy','Fehlerfrei · tiefengeprüft'],['NeedsReview','Mit Hinweisen / Prüfbedarf'],['AudioErrors','Technisch auffällig'],['MissingTags','Fehlende Audio-Tags'],['MissingJson','Fehlendes PK-JSON'],['MissingCovers','Fehlende Cover'],['Conflicts','Metadatenkonflikte'],['Duplicates','Duplikatverdacht']];
     for(const [key,label]of entries){const box=el('div');box.className='health-metric';box.append(el('strong',state.summary?state.summary[key]:'–'),el('span',label));metrics.append(box);}
     const bytes=el('div');bytes.className='health-metric';bytes.append(el('strong',state.summary?size(state.summary.Bytes):'–'),el('span','Speicherverbrauch'));metrics.append(bytes);
+    for(const [key,label]of [['Open','Offene Reparaturaufträge'],['Successful','Erfolgreiche Reparaturen · Historie']]){const box=el('div');box.className='health-metric';box.append(el('strong',state.activity?.[key]??'–'),el('span',label));metrics.append(box);}
     q('[data-health-score]').textContent=state.summary?(state.summary.Score==null?'Noch kein Health Score. Dafür ist ein vollständiger Tiefenscan nötig.':'Health Score '+state.summary.Score+' % · '+state.summary.Healthy+' / '+state.summary.FullyChecked+' vollständig dekodierte Dateien ohne offene Prüfhinweise.')+' Letzter Scan: '+stamp(state.lastScan)+' · '+state.scanState:'';
-    q('[data-health-warning]').textContent=[...(state.warnings||[]),state.dirty?'Die angezeigten Scanwerte stammen von vor den Änderungen. Bitte neu scannen.':''].filter(Boolean).join(' ');
+    q('[data-health-warning]').textContent=[...(state.warnings||[]),state.dirty?'Die angezeigten Scanwerte stammen von vor den Änderungen. Bitte neu scannen.':'',state.activity?.LastBackup?'Letzte protokollierte Sicherung: '+stamp(state.activity.LastBackup):''].filter(Boolean).join(' ');
     renderRows();renderHistory();
   }
   function renderHistory(){
@@ -81,10 +83,12 @@
   }
   const setTab=value=>{
     tab=value;
+    const secondary=['vdj','quarantine','backups','repairs','reports'].includes(tab);
+    q('[data-health-summary]').hidden=secondary;q('[data-health-score]').hidden=secondary;
     for(const button of root.querySelectorAll('[data-health-tab]'))button.setAttribute('aria-pressed',String(button.dataset.healthTab===tab));
-    const sections={'[data-health-history]':'repairs','[data-health-backups]':'backups','[data-health-reports]':'reports','[data-health-vdj]':'vdj','[data-health-quality-note]':'quality'};
+    const sections={'[data-health-history]':'repairs','[data-health-backups]':'backups','[data-health-reports]':'reports','[data-health-vdj]':'vdj','[data-health-quality-note]':'quality','[data-health-quarantine]':'quarantine'};
     for(const [selector,name]of Object.entries(sections))q(selector).hidden=tab!==name;
-    q('[data-health-library]').hidden=['repairs','backups','reports'].includes(tab);
+    q('[data-health-library]').hidden=['repairs','backups','reports','vdj','quarantine'].includes(tab);
     q('[data-health-filter]').value=({metadata:'missing',covers:'MISSING_COVER',integrity:'AUDIO_ERROR',duplicates:'duplicates',paths:'INVALID_PATH',vdj:'vdj'})[tab]||'all';
     page=0;renderRows();
   };
@@ -99,13 +103,17 @@
   q('[data-health-options]').onsubmit=event=>{event.preventDefault();send('health-options',{values:Object.fromEntries(new FormData(event.target))});};
   q('[data-health-batch]').onclick=()=>send('health-plan',{requests:[...selected].map(Id=>({Id}))});
   q('[data-health-json]').onclick=()=>send('health-plan',{requests:[...selected].map(Id=>({Id,Json:true}))});
+  q('[data-health-quarantine-plan]').onclick=()=>send('health-quarantine-plan',{ids:[...selected]});
+  q('[data-health-cover-batch]').onclick=()=>{coverBatchIds=[...selected];if(coverBatchIds.length)send('health-record',{id:coverBatchIds[0]});};
   q('[data-health-export]').onclick=()=>send('health-export');q('[data-health-open-reports]').onclick=()=>send('health-reports');
   q('[data-health-export-repairs]').onclick=()=>send('health-export-repairs');
   q('[data-health-restore]').onclick=()=>send('health-restore-preview',{ids:[...backupSelected]});
   const editor=el('dialog');editor.dataset.healthEditor='';editor.setAttribute('aria-label','Metadaten und Quellen vergleichen');root.append(editor);
+  editor.addEventListener('close',()=>{coverBatchIds=[];});
   function openEditor(value){
-    record=value;coverPath='';editor.replaceChildren();
+    record=value;coverPath='';coverOrigin='Manueller Coverimport';editor.replaceChildren();
     const header=el('header');header.append(el('h2','Metadaten und Quellen'),action('Schließen',()=>editor.close()));editor.append(header,el('p',record.Path),el('p',textCodes(record.Codes)));
+    if(coverBatchIds.length>1)editor.append(el('p','Gemeinsames Cover für '+coverBatchIds.length+' ausgewählte Dateien. Audio-Tags bleiben unverändert. Einbettung ist nur bei einer reinen MP3-Auswahl möglich.'));
     if(record.Notes?.length)editor.append(el('p',record.Notes.join(' ')));
     if(!record.Resolved){editor.append(el('p','Keine belastbare Metadatenanalyse verfügbar.'));editor.showModal();return;}
     const form=el('form');form.dataset.healthEditorForm='';
@@ -126,15 +134,19 @@
     const coverBox=el('section');coverBox.className='settings-group';coverBox.append(el('h3','Cover'));
     const image=el('img');image.dataset.healthCoverPreview='';image.alt='Cover-Vorschau';image.hidden=true;coverBox.append(image);
     record.Covers?.forEach((cover,index)=>{coverBox.append(el('p',cover.Path+' · '+cover.Width+' × '+cover.Height+' · '+size(cover.Size)+(cover.Valid?'':' · nicht lesbar')));if(cover.Valid)coverBox.append(action('Cover ansehen',()=>send('health-cover-preview',{id:record.Id,index})));});
-    const coverStatus=el('p');coverStatus.dataset.healthCoverChoice='';coverBox.append(action('Eigenes Cover auswählen …',()=>send('health-cover-choose')),coverStatus,el('small','Ein gewähltes Bild wird nach Freigabe als eigenes JPEG-Cover gespeichert. Vorhandene Cover bleiben erhalten. Audio-Cover werden im MVP nicht neu eingebettet.'));form.append(coverBox);
+    const coverStatus=el('p');coverStatus.dataset.healthCoverChoice='';
+    const origin=el('select');origin.setAttribute('aria-label','Herkunft des importierten Covers');origin.append(new Option('Manueller Coverimport','Manueller Coverimport'),new Option('KI-generiertes Cover','KI-generiert'));origin.onchange=()=>{coverOrigin=origin.value;};
+    const embedLabel=el('label');embedLabel.className='check-line';const embed=el('input');embed.type='checkbox';embed.name='embedCover';embed.dataset.healthEmbedCover='';embed.disabled=!record.Path.toLowerCase().endsWith('.mp3')||(coverBatchIds.length>1&&state.rows.some(row=>coverBatchIds.includes(row.id)&&!row.path.toLowerCase().endsWith('.mp3')));embedLabel.append(embed,document.createTextNode('Gewähltes JPEG zusätzlich verlustfrei in MP3 einbetten'));
+    coverBox.append(action('Cover aus vorhandener Quelle / Original-Thumbnail vorbereiten',()=>send('health-cover-recover',{id:record.Id})),action('Eigenes Cover auswählen …',()=>send('health-cover-choose',{id:record.Id})),origin,coverStatus,embedLabel,el('small','Die Quelle wird vor der Übernahme angezeigt. KI-generierte Bilder werden ausdrücklich als solche dokumentiert. Bei mehrteiligen Sets wird das externe Cover gemeinsam im Setordner gespeichert; die MP3-Einbettung erfolgt je ausgewählter Datei. Andere Audioformate werden nicht für neue Covereinbettung verwendet.'));form.append(coverBox);
     const preview=el('button','Reparaturvorschau erstellen');preview.type='submit';preview.className='hot';preview.disabled=state.busy||state.dirty;form.append(preview);
-    form.onsubmit=event=>{event.preventDefault();const Changes={};for(const check of form.querySelectorAll('[data-health-field]:checked'))Changes[check.dataset.healthField]=form.elements.namedItem(check.dataset.healthField).value;send('health-plan',{requests:[{Id:record.Id,Changes,Json:jsonCheck.checked,CoverPath:coverPath}]});};
+    if(coverBatchIds.length>1)for(const control of scroll.querySelectorAll('input,button'))control.disabled=true;
+    form.onsubmit=event=>{event.preventDefault();const Changes={};if(coverBatchIds.length<2)for(const check of form.querySelectorAll('[data-health-field]:checked'))Changes[check.dataset.healthField]=form.elements.namedItem(check.dataset.healthField).value;if(coverBatchIds.length>1&&!coverPath){coverStatus.textContent='Zuerst ein gemeinsames Cover auswählen oder vorbereiten.';return;}const ids=coverBatchIds.length?coverBatchIds:[record.Id];send('health-plan',{requests:ids.map(Id=>({Id,Changes,Json:jsonCheck.checked,CoverPath:coverPath,CoverOrigin:coverOrigin,EmbedCover:embed.checked}))});};
     editor.append(form);if(!editor.open)editor.showModal();
   }
   const planDialog=el('dialog');planDialog.dataset.healthPlanDialog='';planDialog.setAttribute('aria-label','Reparaturvorschau und Freigabe');root.append(planDialog);
   function showPlan(data){
     planToken=data.id;planDialog.replaceChildren(el('h2','Reparaturvorschau'),el('p','Noch keine Musikdatei verändert. '+data.items.length+' Dateien · mindestens '+size(data.bytes)+' für Originalbackups; zusätzlich Platz für temporäre Dateien erforderlich.'));
-    for(const item of data.items){const box=el('div');box.className='health-plan-item';box.append(el('strong',item.Path));for(const [field,value]of Object.entries(item.Changes||{})){box.append(el('p',(labels[field]||field)+': '+(item.Before?.[field]||'leer')+' → '+(value||'leer')));const evidence=item.Sources?.[field]||[];box.append(el('small',evidence.map(s=>s.Source+': '+s.Value).join(' · ')||'Manuelle Eingabe'));}if(item.Json)box.append(el('p','PK-JSON aus vorhandenen Tags ergänzen.'));if(item.Cover)box.append(el('p','Eigenes JPEG-Cover aus '+item.Cover.Path));if(item.Conflicts?.length)box.append(el('p','Quellenkonflikte: '+item.Conflicts.map(f=>labels[f]||f).join(', ')));planDialog.append(box);}
+    for(const item of data.items){const box=el('div');box.className='health-plan-item';box.append(el('strong',item.Path));for(const [field,value]of Object.entries(item.Changes||{})){box.append(el('p',(labels[field]||field)+': '+(item.Before?.[field]||'leer')+' → '+(value||'leer')));const evidence=item.Sources?.[field]||[];box.append(el('small',evidence.map(s=>s.Source+': '+s.Value).join(' · ')||'Manuelle Eingabe'));}if(item.Json)box.append(el('p','PK-JSON aus vorhandenen Tags ergänzen.'));if(item.Cover)box.append(el('p','Eigenes JPEG-Cover aus '+item.Cover.Path));if(item.EmbedCover)box.append(el('p','Zusätzlich JPEG in MP3 einbetten · keine Audiokodierung'));if(item.Conflicts?.length)box.append(el('p','Quellenkonflikte: '+item.Conflicts.map(f=>labels[f]||f).join(', ')));planDialog.append(box);}
     const confirm=el('label');confirm.className='check-line';const check=el('input');check.type='checkbox';check.dataset.healthApproveCheck='';confirm.append(check,document.createTextNode('Ich habe Änderungen und Quellen geprüft und gebe genau diesen Reparaturplan frei.'));
     const apply=action('Freigegebene Reparatur ausführen',()=>{if(!check.checked)return;send('health-approve',{token:planToken,approved:true});planDialog.close();editor.close();});apply.className='hot';apply.disabled=true;check.onchange=()=>{apply.disabled=!check.checked;};planDialog.append(confirm,apply,action('Abbrechen',()=>planDialog.close()));if(!planDialog.open)planDialog.showModal();
   }
@@ -145,7 +157,8 @@
     else if(data.type==='health-record')openEditor(data.record);
     else if(data.type==='health-plan')showPlan(data);
     else if(data.type==='health-cover'){const image=editor.querySelector('[data-health-cover-preview]');if(image){image.src=data.image;image.hidden=false;}}
-    else if(data.type==='health-cover-chosen'){coverPath=data.path;editor.querySelector('[data-health-cover-choice]').textContent='Nach Freigabe übernehmen: '+data.path;}
+    else if(data.type==='health-cover-chosen'){if(data.id&&data.id!==record?.Id)return;coverPath=data.path;editor.querySelector('[data-health-cover-choice]').textContent='Nach Freigabe übernehmen: '+data.path;if(data.image){const image=editor.querySelector('[data-health-cover-preview]');image.src=data.image;image.hidden=false;}}
+    else if(data.type==='health-cover-recovered'){coverPath=data.cover.Path;coverOrigin=data.cover.Origin;editor.querySelector('[data-health-cover-choice]').textContent='Vorbereitete Quelle: '+data.cover.Origin+' · '+data.cover.Path+(data.cover.Url?' · '+data.cover.Url:'');if(data.image){const image=editor.querySelector('[data-health-cover-preview]');image.src=data.image;image.hidden=false;}}
     else if(data.type==='health-restore-preview'){
       restoreToken=data.id;restoreDialog.replaceChildren(el('h2','Originale wiederherstellen'),el('p','Backups und Dateizustand wurden geprüft. Folgende Reparaturen werden rückgängig gemacht:'));
       for(const path of data.paths)restoreDialog.append(el('p',path));
