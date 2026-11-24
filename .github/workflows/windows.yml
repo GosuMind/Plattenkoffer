@@ -18,6 +18,9 @@ jobs:
       - name: Test Library Health with Windows PowerShell 5.1
         shell: pwsh
         run: ./build/Test-Health.ps1 -DownloadTools
+      - name: Test isolated installer and module packaging
+        shell: pwsh
+        run: ./build/tests/Health.Installer.ps1
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: Plattenkoffer-Windows
