@@ -629,6 +629,21 @@
     const path=document.createElementNS(svg.namespaceURI,'path'); path.setAttribute('d',paths[aliases[name] || name] || paths.plus); svg.append(path);
     return svg;
   }
+  function drawTransportIcon(name) {
+    const shapes={
+      play:'M8 4 20 12 8 20Z',pause:'M6 5h4v14H6ZM14 5h4v14h-4Z',
+      stop:'M5 5h14v14H5Z',next:'M4 5 14 12 4 19ZM17 5h3v14h-3Z',
+      previous:'M20 5 10 12 20 19ZM4 5h3v14H4Z'
+    };
+    const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');svg.setAttribute('focusable','false');svg.classList.add('transport-icon');
+    for(const layer of ['depth','face','shine']){
+      const path=document.createElementNS(svg.namespaceURI,'path');path.setAttribute('d',shapes[name]);path.setAttribute('class','transport-'+layer);
+      if(layer==='depth')path.setAttribute('transform','translate(0 1.2)');
+      svg.append(path);
+    }
+    return svg;
+  }
   for (const [selector,icon] of [['[data-kind=""]','layers'],['[data-kind="Set"]','sets'],['[data-kind="Track"]','music'],['[data-favorites]','heart'],['[data-open-playlists]','playlist'],['nav [data-command="downloads"]','download'],['nav [data-command="convert"]','convert'],['nav [data-command="settings"]','settings'],['[data-help]','help'],['[data-filter-toggle]','filter']]) {
     const control=query(selector); control.prepend(drawIcon(icon));
   }
@@ -636,8 +651,9 @@
   query('aside strong').prepend(drawIcon('record'));
   healthNav.prepend(drawIcon('help'));
   for(const [command,icon] of [['player-previous','previous'],['player-next','next'],['stop','stop'],['mini-player','mini']]) {
-    query('footer [data-command="'+command+'"]').replaceChildren(drawIcon(icon));
+    query('footer [data-command="'+command+'"]').replaceChildren(icon==='mini'?drawIcon(icon):drawTransportIcon(icon));
   }
+  player.replaceChildren(drawTransportIcon('play'));
   query('footer .volume').prepend(drawIcon('volume'));
   for (const name of ['cover','list']) query('[data-view="'+name+'"]').replaceChildren(drawIcon(name==='cover'?'grid':'list'));
   query('[data-filter-toggle]').onclick=()=>{
@@ -664,7 +680,7 @@
       : playback.playing ? "Pause" : playback.active ? "Wiedergabe fortsetzen"
       : visibleSelection ? visibleSelection.title + " abspielen" : "Abspielen";
     player.disabled = !visibleSelection && !playback.active;
-    player.replaceChildren(drawIcon(!canStart && playback.playing ? 'pause' : 'play'));
+    player.replaceChildren(drawTransportIcon(!canStart && playback.playing ? 'pause' : 'play'));
     player.title = caption;
     player.setAttribute("aria-label",caption);
   }

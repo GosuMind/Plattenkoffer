@@ -21,14 +21,20 @@
   <main data-health hidden>
     <header><div><p class="muted">PLATTENKOFFER · LIBRARY HEALTH &amp; REPAIR CENTER</p><h1>Bibliothekspflege</h1></div></header>
     <p class="health-intro">Musik prüfen, Metadaten vergleichen und Änderungen vor dem Übernehmen kontrollieren. Der Scan verändert keine Musikdateien.</p>
+    <div class="entry-actions" role="group" aria-label="Ansicht der Bibliothekspflege"><button data-health-mode="simple" aria-pressed="true">Einfach</button><button data-health-mode="advanced" aria-pressed="false">Erweitert</button></div>
+    <section class="health-status-panel" aria-label="Prüfstatus"><p data-health-status role="status" aria-live="polite"></p><p data-health-lastscan class="muted"></p><p data-health-current class="muted"></p><progress data-health-progress max="100" value="0" hidden aria-label="Fortschritt der Bibliothekspflege"></progress><p data-health-progress-text class="muted" aria-live="polite"></p><button data-health-cancel disabled>Prüfung abbrechen</button><details data-health-diagnosis hidden><summary>Diagnose / technische Ursache</summary><pre data-health-detail></pre></details></section>
+    <section data-health-simple class="settings-group">
+      <h2>Sammlung prüfen</h2><p>Plattenkoffer sucht nach fehlenden Angaben, widersprüchlichen Quellen, fehlenden Covern, möglichen Duplikaten und Lesefehlern. Änderungen erfolgen erst nach deiner Freigabe.</p>
+      <p>Musikordner: <strong data-health-folder></strong></p><div class="entry-actions"><button data-health-folder-change>Ordner ändern …</button><button class="hot" data-health-start>Sammlung prüfen</button><button data-health-simple-backups>Sicherungen / Rückgängig</button><button data-health-more>Weitere Pflegeaktionen</button></div>
+      <div data-health-groups class="health-metrics" aria-label="Ergebnisgruppen"></div>
+    </section>
     <nav class="health-tabs" aria-label="Bereiche der Bibliothekspflege">
       <button data-health-tab="overview" aria-pressed="true">Übersicht</button><button data-health-tab="scan">Bibliotheksscan</button><button data-health-tab="metadata">Metadaten</button><button data-health-tab="covers">Cover-Manager</button><button data-health-tab="integrity">Audiointegrität</button><button data-health-tab="quality">Audioqualität</button><button data-health-tab="duplicates">Duplikate</button><button data-health-tab="paths">Dateistruktur</button><button data-health-tab="quarantine">Quarantäne</button><button data-health-tab="vdj">VirtualDJ / Poweramp</button><button data-health-tab="repairs">Reparaturen</button><button data-health-tab="backups">Backup &amp; Restore</button><button data-health-tab="reports">Protokolle</button>
     </nav>
     <section class="settings-group health-options"><details><summary>Ordner, Werkzeuge und Scanoptionen</summary><form data-health-options>
       <label>Bibliotheksordner<input name="Root" required></label><label>FFprobe<input name="Probe" required></label><label>FFmpeg<input name="FFmpeg" required></label><label>Berichte und Checkpoints außerhalb der Musikbibliothek<input name="Storage" required></label><label>Reparaturbackups außerhalb der Musikbibliothek<input name="BackupRoot" required></label><label>Quarantäne außerhalb der Musikbibliothek<input name="QuarantineRoot" required></label><label>Cover-Arbeitsordner außerhalb der Musikbibliothek<input name="CoverRoot" required></label><label>Ausdrücklich gewählte VirtualDJ-Datenbank<input name="VdjDatabase" placeholder="database.xml"></label><label>Backup-Speicherlimit in GB (0 = unbegrenzt)<input name="BackupLimitGB" type="number" min="0" max="100000" value="20" required></label><label>Entfernbare Videozusätze, mit Komma trennen<input name="VideoSuffixes"></label><p class="muted">Backups werden nicht automatisch gelöscht. Speicherverbrauch vor jeder Freigabe prüfen. Netzwerkpfade sind für Reparaturen noch nicht freigegeben.</p><button type="submit">Pflege-Einstellungen speichern</button>
     </form></details></section>
-    <div class="entry-actions health-scan-actions"><label class="check-line"><input data-health-deep type="checkbox">Tiefenscan mit vollständiger Dekodierung</label><button class="hot" data-health-full>Vollständig scannen</button><button data-health-incremental>Inkrementell / fortsetzen</button><button data-health-cancel disabled>Abbrechen</button></div>
-    <p data-health-status role="status" aria-live="polite"></p><p data-health-current class="muted"></p><progress data-health-progress max="100" value="0" hidden aria-label="Fortschritt der Bibliothekspflege"></progress>
+    <div class="entry-actions health-scan-actions"><label class="check-line"><input data-health-deep type="checkbox">Tiefenscan: Audio vollständig lesen</label><button class="hot" data-health-full>Alle Dateien prüfen</button><button data-health-incremental>Neue / geänderte Dateien prüfen</button><button data-health-resume>Abgebrochene Prüfung fortsetzen</button><p class="muted">Fortsetzen und „Neue / geänderte Dateien“ durchsuchen den Ordner erneut und verwenden passende, unveränderte Prüfergebnisse weiter. Ein Tiefenscan ergänzt die vollständige Audioprüfung, falls diese noch fehlt. „Alle Dateien“ prüft jede Datei neu.</p></div>
     <div data-health-summary class="health-metrics"></div><p data-health-score class="muted"></p><p data-health-warning class="muted"></p>
     <section data-health-vdj hidden>
       <h2>VirtualDJ Compatibility Center</h2><p>Audio-Tags und VirtualDJ-Datenbank werden getrennt geprüft. Direkte XML-Korrekturen sind ein versionsabhängiger Workaround für Version 2026. VirtualDJ muss bei jeder Änderung vollständig geschlossen sein. Nur fehlende oder ungültige Author-/Title-Werte werden ergänzt; andere DJ-Daten bleiben erhalten.</p>
@@ -41,8 +47,9 @@
     <section data-health-quality-note hidden class="settings-group"><h2>Qualität verständlich einordnen</h2><p>Codec, Bitrate, Abtastrate und Dateigröße beschreiben die vorhandene Datei. Bitraten verschiedener Codecs sind nicht unmittelbar vergleichbar. Hohe Werte belegen keine hochwertige Originalquelle. Die Bibliothekspflege konvertiert kein Audio und wertet Dateien nicht künstlich auf.</p></section>
     <section data-health-library>
       <div class="health-controls"><input data-health-search type="search" placeholder="Pfad, Interpret oder Titel suchen" aria-label="Scanergebnisse durchsuchen"><select data-health-filter aria-label="Scanergebnisse filtern"><option value="all">Alle Dateien</option><option value="HEALTHY">Fehlerfrei, vollständig geprüft</option><option value="Track">Nur Tracks</option><option value="Set">Nur Sets</option><option value="missing">Fehlende Audio-Tags</option><option value="MISSING_JSON">Fehlendes PK-JSON</option><option value="INVALID_JSON">Fehlerhaftes JSON</option><option value="conflicts">Metadatenkonflikte</option><option value="MISSING_COVER">Fehlende Cover</option><option value="duplicates">Duplikate</option><option value="AUDIO_ERROR">Technisch auffällig</option><option value="vdj">Tags vorhanden / Anzeige extern prüfen</option><option value="MANUAL_REVIEW">Manuelle Prüfung</option></select></div>
-      <div class="entry-actions"><button data-health-select>Gefilterte auswählen</button><button data-health-clear>Auswahl aufheben</button><span data-health-selected>0 ausgewählt</span><button data-health-batch>Vorschau für fehlende Tags</button><button data-health-json>Vorschau für JSON-Rekonstruktion</button><button data-health-cover-batch>Gemeinsames Cover für Auswahl …</button><button data-health-quarantine-plan>Duplikatauswahl archivieren …</button></div>
+      <div class="entry-actions"><button data-health-select>Gefilterte auswählen</button><button data-health-clear>Auswahl aufheben</button><span data-health-selected>0 ausgewählt</span><button data-health-batch>Fehlende Musikangaben ergänzen …</button><button data-health-json>Plattenkoffer-Angaben ergänzen …</button><button data-health-cover-batch>Gemeinsames Cover für Auswahl …</button><button data-health-quarantine-plan>Duplikatauswahl archivieren …</button></div>
       <p class="muted">Stapelvorschläge ergänzen ausschließlich fehlenden Interpret/Titel ohne erkannten Quellenkonflikt. Andere Änderungen einzeln prüfen. Generische Dateinamen und fehlende eingebettete Cover sind Hinweise, keine Defektmeldung.</p>
+      <div data-health-simple-rows></div>
       <div class="health-table" tabindex="0" aria-label="Scanergebnisse"><table><thead><tr><th>Auswahl</th><th>Interpret</th><th>Titel</th><th>Version</th><th>Album</th><th>Genre</th><th>Jahr</th><th>Format / Codec</th><th>Bitrate</th><th>Dauer</th><th>Abtastrate / Kanäle</th><th>Größe</th><th>Cover</th><th>JSON / Metadaten</th><th>Integrität</th><th>Pfad</th><th>Aktion</th></tr></thead><tbody data-health-rows></tbody></table></div>
       <div class="entry-actions"><button data-health-prev>Vorherige</button><span data-health-page></span><button data-health-next>Nächste</button></div>
     </section>
@@ -442,6 +449,15 @@
 #pk-concept footer{min-height:var(--player);padding:12px 28px;grid-template-columns:minmax(140px,1.2fr) auto auto auto minmax(150px,2fr) auto minmax(80px,145px) auto;gap:14px;background:linear-gradient(100deg,#24221f,#1d1c1a);z-index:4}
 #pk-concept footer button{background:transparent;border:0}
 #pk-concept footer [data-toggle]{background:var(--orange);color:white;width:50px;height:50px;font-size:23px}
+#pk-concept footer button{display:grid;place-items:center;padding:0;line-height:0;flex-shrink:0}
+#pk-concept footer button svg{display:block;margin:0}
+#pk-concept footer [data-toggle]{background:linear-gradient(155deg,color-mix(in srgb,var(--orange),white 18%),var(--orange) 58%,color-mix(in srgb,var(--orange),black 20%));box-shadow:inset 0 1px 1px #ffffff60,inset 0 -2px 2px #0005,0 2px 4px #0004}
+#pk-concept .transport-icon{overflow:visible;filter:drop-shadow(0 1px 1px #0005)}
+#pk-concept .transport-depth{fill:#000;opacity:.5}
+#pk-concept .transport-face{fill:currentColor;stroke:#0005;stroke-width:.5;stroke-linejoin:round}
+#pk-concept .transport-shine{fill:none;stroke:#fff;stroke-opacity:.65;stroke-width:.65;stroke-linejoin:round}
+#pk-concept footer button:enabled:hover{filter:brightness(1.12)}
+#pk-concept footer button:enabled:active{transform:translateY(1px)}
 #pk-concept footer .timeline{display:flex;align-items:center;gap:18px;flex-direction:row-reverse}
 #pk-concept footer [data-time]{white-space:nowrap;color:var(--ink);font-size:14px}
 #pk-concept footer .volume{font-size:0;display:flex;align-items:center;gap:12px}
@@ -525,6 +541,21 @@
 #pk-concept [data-health-progress]{width:100%}
 #pk-concept [data-health-current],#pk-concept [data-health-status]{overflow-wrap:anywhere}
 #pk-concept [data-health-vdj] .health-table table{min-width:1100px}
+#pk-concept [data-health][data-mode="simple"] :is(.health-tabs,.health-options,.health-scan-actions,[data-health-summary],[data-health-score],.health-table,.health-controls select,[data-health-library]>p){display:none}
+#pk-concept [data-health][data-mode="advanced"] :is([data-health-simple],[data-health-simple-rows]){display:none}
+#pk-concept .health-simple-row{display:flex;align-items:center;gap:16px;padding:16px;margin:12px 0;border:1px solid var(--line);border-radius:11px;background:var(--panel)}
+#pk-concept .health-simple-row>div{flex:1;min-width:0;overflow-wrap:anywhere}
+#pk-concept .health-simple-row p{margin:5px 0;color:var(--muted)}
+#pk-concept [data-health-groups]{width:100%;margin-top:18px;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr))}
+#pk-concept [data-health-simple]{display:block;overflow-wrap:anywhere}
+#pk-concept .health-status-panel{position:sticky;top:0;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:12px 16px;margin:16px 0;z-index:3}
+#pk-concept .health-status-panel p{margin:4px 0;overflow-wrap:anywhere}
+#pk-concept [data-health-groups] small{display:block;color:var(--muted);font-size:14px;margin-top:8px}
+#pk-concept [data-health-detail]{white-space:pre-wrap;overflow-wrap:anywhere}
+#pk-concept .health-active:before{content:'●';display:inline-block;margin-right:8px;animation:health-pulse 1.2s ease-in-out infinite alternate}
+@keyframes health-pulse{from{opacity:.35}to{opacity:1}}
+@media(prefers-reduced-motion:reduce){#pk-concept .health-active:before{animation:none}}
+@media(max-width:900px){#pk-concept .health-simple-row{flex-wrap:wrap}#pk-concept .health-simple-row>div{flex-basis:75%}}
 </style>
 <script src="collection.js"></script>
 <script src="health.js"></script>

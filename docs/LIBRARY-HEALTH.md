@@ -2,6 +2,8 @@
 
 Stand 24. November 2026. Erste integrierte Version des Moduls, App-Entwicklungsstand 0.5.0.
 
+Die aktuelle Bedienung mit **Einfach / Erweitert**, verständlichem Scanstart und geführter Reparatur ist in [Bibliothekspflege bedienen](BIBLIOTHEKSPFLEGE-BEDIENUNG.md) beschrieben. Der [Prüfbericht vom 25. November 2026](BIBLIOTHEKSPFLEGE-PRUEFBERICHT-2026-11-25.md) dokumentiert die native Windows-Abnahme. Die folgenden Abschnitte halten die ursprüngliche technische Grundlage fest.
+
 Diese Seite beschreibt den ursprünglichen Stand 0.5.0. Die Erweiterungen ab **0.5.1**, insbesondere VirtualDJ-DOM-Korrekturen, semantische Prüfung, MP3-Cover und Quarantäne, sind in [Entwicklungsauftrag 02](LIBRARY-HEALTH-02.md) dokumentiert. Die dort beschriebene separate Freigabe erweitert die unten genannten ursprünglichen Grenzen.
 
 ## Bestandsaufnahme und Architekturentscheidung

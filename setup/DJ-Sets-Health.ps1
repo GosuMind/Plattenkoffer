@@ -26,7 +26,7 @@ function ConvertTo-PkHealthArgument([string]$Value) {
     '"'+([regex]::Replace([regex]::Replace($Value,'(\\*)"','$1$1\"'),'(\\+)$','$1$1'))+'"'
 }
 
-function Invoke-PkHealthTool([string]$Tool,[string[]]$Arguments,$Control,[int]$TimeoutSeconds=180) {
+function Invoke-PkHealthTool([string]$Tool,[string[]]$Arguments,$Control,[int]$TimeoutSeconds=180,[double]$ProgressDuration=0) {
     Assert-SafePath $Tool
     if (![IO.File]::Exists($Tool)) { throw "Werkzeug fehlt: $Tool" }
     if ($Control -and $Control.Cancel) { throw [OperationCanceledException]::new('Vorgang abgebrochen.') }
@@ -41,16 +41,26 @@ function Invoke-PkHealthTool([string]$Tool,[string[]]$Arguments,$Control,[int]$T
     else{$start.Arguments=($localArguments | ForEach-Object { ConvertTo-PkHealthArgument $_ }) -join ' '}
     $process=[Diagnostics.Process]::new();$process.StartInfo=$start
     try {
-        [void]$process.Start();$output=$process.StandardOutput.ReadToEndAsync();$errors=$process.StandardError.ReadToEndAsync()
+        [void]$process.Start();$errors=$process.StandardError.ReadToEndAsync()
+        if($ProgressDuration -gt 0){$lines=[Text.StringBuilder]::new();$lineTask=$process.StandardOutput.ReadLineAsync()}else{$output=$process.StandardOutput.ReadToEndAsync()}
         $clock=[Diagnostics.Stopwatch]::StartNew()
         while (!$process.WaitForExit(100)) {
+            if($ProgressDuration -gt 0){
+                while($lineTask -and $lineTask.IsCompleted){
+                    $line=$lineTask.GetAwaiter().GetResult()
+                    if($null -eq $line){$lineTask=$null;break}
+                    [void]$lines.AppendLine($line)
+                    if($Control -and $line -match '^out_time_us=(\d+)$'){$Control.FilePercent=[Math]::Min(100,[Math]::Floor(100*[double]$Matches[1]/1000000/$ProgressDuration))}
+                    $lineTask=$process.StandardOutput.ReadLineAsync()
+                }
+            }
             if (($Control -and $Control.Cancel) -or $clock.Elapsed.TotalSeconds -gt $TimeoutSeconds) {
                 $process.Kill();$process.WaitForExit()
                 if ($Control -and $Control.Cancel) { throw [OperationCanceledException]::new('Vorgang abgebrochen.') }
                 throw 'Zeitlimit des Audiowerkzeugs überschritten.'
             }
         }
-        try{$text=$output.GetAwaiter().GetResult();$errorText=$errors.GetAwaiter().GetResult()}
+        try{if($ProgressDuration -gt 0){if($lineTask){[void]$lines.AppendLine($lineTask.GetAwaiter().GetResult())};[void]$lines.Append($process.StandardOutput.ReadToEnd());$text=$lines.ToString();if($Control){$Control.FilePercent=100}}else{$text=$output.GetAwaiter().GetResult()};$errorText=$errors.GetAwaiter().GetResult()}
         catch{throw [IO.InvalidDataException]::new('TOOL_ENCODING_ERROR: Werkzeugausgabe konnte nicht strikt als UTF-8 gelesen werden. Musikdatei nicht als beschädigt bewertet.', $_.Exception)}
         if ($process.ExitCode -ne 0) { throw "Audiowerkzeug meldet Fehler $($process.ExitCode): $($errorText.Substring(0,[Math]::Min(1200,$errorText.Length)))" }
         $text
@@ -91,9 +101,18 @@ function Read-PkHealthJson([string]$Path,[long]$MaxBytes=16MB) {
     $value
 }
 
-function Get-PkHealthFileHash([string]$Path) {
+function Get-PkHealthFileHash([string]$Path,$Control) {
     Assert-SafePath $Path
-    (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
+    $stream=[IO.File]::OpenRead($Path);$hash=[Security.Cryptography.SHA256]::Create()
+    try {
+        $buffer=New-Object byte[] 1048576
+        while(($read=$stream.Read($buffer,0,$buffer.Length)) -gt 0){
+            if($Control -and $Control.Cancel){throw [OperationCanceledException]::new('Vorgang abgebrochen.')}
+            [void]$hash.TransformBlock($buffer,0,$read,$buffer,0)
+        }
+        [void]$hash.TransformFinalBlock($buffer,0,0)
+        [BitConverter]::ToString($hash.Hash).Replace('-','')
+    } finally {$stream.Dispose();$hash.Dispose()}
 }
 
 function Get-PkHealthBackupUsage($Options) {
@@ -235,6 +254,7 @@ function Resolve-PkHealthMetadata($Tags,$Pk,$Info,$Folder,$Options) {
 }
 
 function Get-PkHealthRecord([string]$Path,$Options,$Control) {
+    if($Control){$Control.Step='Musikangaben und Quelldaten lesen'}
     $null=Assert-PkHealthScope $Path $Options.Root
     $file=Get-Item -LiteralPath $Path
     $folder=Get-PkHealthFolder $Path $Options.Root
@@ -267,6 +287,7 @@ function Get-PkHealthRecord([string]$Path,$Options,$Control) {
         } catch { if ('INVALID_JSON' -notin $codes) { $codes.Add('INVALID_JSON') };$notes.Add("$($item.Name): $($_.Exception.Message)") }
     }
     try {
+        if($Control){$Control.Step='Audioformat und Musikangaben prüfen'}
         $probeResult=Get-PkHealthProbe $Path $Options $Control
         $record.Probe=$probeResult;$record.Tags=Get-PkHealthTags $probeResult
         $streams=@($probeResult.streams | Where-Object codec_type -eq 'audio');$stream=$streams[0]
@@ -282,11 +303,14 @@ function Get-PkHealthRecord([string]$Path,$Options,$Control) {
         # Only separately tested container/codec combinations are enabled for writing.
         $record.Repairable=($streams.Count -eq 1 -and (($file.Extension -ieq '.opus' -and $stream.codec_name -eq 'opus' -and $record.Container -match 'ogg') -or ($file.Extension -ieq '.m4a' -and $stream.codec_name -eq 'aac' -and $record.Container -match 'mov|mp4')))
         if (!$record.Repairable) { $codes.Add('UNSUPPORTED_FORMAT') }
-        $record.FileHash=Get-PkHealthFileHash $Path
+        if($Control){$Control.Step='Datei vergleichen – große Dateien können länger dauern'}
+        $record.FileHash=Get-PkHealthFileHash $Path $Control
+        if($Control){$Control.Step='Audiodaten auf identische Dateien prüfen – Prüfung läuft'}
         $record.AudioHashes=Get-PkHealthAudioHashes $Path $Options $Control
         $record.Integrity='PACKETS_CHECKED'
         if ($Options.Deep) {
-            $null=Invoke-PkHealthTool $Options.FFmpeg @('-v','error','-xerror','-err_detect','explode','-nostdin','-i',$Path,'-map','0:a','-f','null','-') $Control 14400
+            if($Control){$Control.Step='Tiefenscan: gesamte Audiodatei lesen – bei langen Sets bitte warten; Abbrechen bleibt möglich'}
+            $null=Invoke-PkHealthTool $Options.FFmpeg @('-v','error','-xerror','-err_detect','explode','-nostdin','-nostats','-progress','pipe:1','-i',$Path,'-map','0:a','-f','null','-') $Control 14400 -ProgressDuration $record.Duration
             $record.Integrity='DECODE_CHECKED'
         }
         if ($record.Duration -le 0 -or !$stream.sample_rate -or !$stream.channels) { throw 'Ungültige Audioparameter.' }
@@ -295,6 +319,7 @@ function Get-PkHealthRecord([string]$Path,$Options,$Control) {
         if($_.Exception.Message -match 'TOOL_ENCODING_ERROR'){$codes.Add('TOOL_ENCODING_ERROR');$record.Integrity='UNTESTED'}else{$codes.Add('AUDIO_ERROR');$record.Integrity='FAILED'}
         $record.Repairable=$false;$notes.Add($_.Exception.Message)
     }
+    if($Control){$Control.Step='Cover und widersprüchliche Angaben prüfen'}
     $covers=@(foreach ($cover in @(Get-PkHealthSidecars $Path | Where-Object Extension -in @('.jpg','.jpeg','.png','.webp','.avif'))) {
         $image=@{Path=$cover.FullName;Size=$cover.Length;Valid=$false;Width=0;Height=0}
         try {
@@ -327,6 +352,7 @@ function Get-PkHealthFiles($Options,$Control,$Warnings) {
     while ($stack.Count) {
         if ($Control -and $Control.Cancel) { return }
         $directory=$stack.Pop()
+        if($Control){$Control.Current=$directory}
         try {
             Assert-SafePath $directory
             foreach ($item in (Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop)) {
@@ -363,6 +389,7 @@ function Update-PkHealthDuplicates($Records) {
 }
 
 function Invoke-PkHealthScan($Options,$Control,[switch]$Incremental) {
+    if($Control){$Control.Phase='preparing';$Control.Step='Ordner und Prüfprogramme prüfen'}
     Assert-PkHealthOptions $Options
     $reportPath=Join-Path $Options.Storage 'scan.json'
     $checkpointRoot=Join-Path $Options.Storage 'scan-checkpoints'
@@ -371,13 +398,15 @@ function Invoke-PkHealthScan($Options,$Control,[switch]$Incremental) {
         try { $saved=Read-PkHealthJson $reportPath 256MB; if ($saved.Root -ieq $Options.Root) { foreach ($r in $saved.Records) { $old[$r.Path]=$r } } } catch { }
     }
     $warnings=[Collections.Generic.List[string]]::new()
+    if($Control){$Control.Phase='discovery';$Control.Step='Musikdateien werden gesucht …'}
     $files=@(Get-PkHealthFiles $Options $Control $warnings)
+    if($Control){$Control.Phase='checking';$Control.Total=$files.Count}
     $records=[Collections.Generic.List[object]]::new()
     $report=@{SchemaVersion=1;Id=[guid]::NewGuid().ToString('N');Root=$Options.Root;StartedAt=[datetime]::UtcNow.ToString('o');EndedAt='';State='SCANNING';Deep=[bool]$Options.Deep;Total=$files.Count;Records=@();Warnings=@()}
     $index=0
     foreach ($file in $files) {
         if ($Control -and $Control.Cancel) { break }
-        if ($Control) { $Control.Current=$file;$Control.Done=$index;$Control.Total=$files.Count }
+        if ($Control) { $Control.Current=$file;$Control.Done=$index;$Control.Total=$files.Count;$Control.Step='Vorhandenes Prüfergebnis und Änderungen vergleichen';$Control.FilePercent=$null }
         try {
             $cached=$old[$file]
             $checkpoint=Join-Path $checkpointRoot ((Get-PkHealthId $file)+'.json')
@@ -395,6 +424,7 @@ function Invoke-PkHealthScan($Options,$Control,[switch]$Incremental) {
             $records.Add(@{Id=(Get-PkHealthId $file);Path=$file;Kind='Unknown';Size=0;Stamp='';Codes=@('AUDIO_ERROR');Notes=@($_.Exception.Message);Integrity='FAILED';Repairable=$false;Tags=@{};FileHash='';AudioHashes=@();Covers=@()})
         }
         $index++;$report.Records=@($records.ToArray());$report.Warnings=@($warnings.ToArray())
+        if($Control){$Control.Done=$index}
         # Individual checkpoints survive discovery cancellation and partial report replacement.
         if($index % 20 -eq 0 -or $index -eq $files.Count){Write-PkHealthAudit $reportPath $report}
     }
@@ -408,6 +438,7 @@ function Invoke-PkHealthScan($Options,$Control,[switch]$Incremental) {
         }catch{$warnings.Add("Nach dem Scan nicht mehr erreichbar: $($record.Path)");$record.Integrity='STALE';$record.Repairable=$false}
     }
     $report.Warnings=@($warnings.ToArray())
+    if($Control){$Control.Phase='finishing';$Control.Step='Ergebnisse und mögliche Duplikate zusammenstellen'}
     Update-PkHealthDuplicates $report.Records
     $report.State=if ($Control -and $Control.Cancel) {'CANCELLED'} elseif ($warnings.Count) {'COMPLETED_WITH_WARNINGS'} else {'COMPLETED'}
     $report.EndedAt=[datetime]::UtcNow.ToString('o')

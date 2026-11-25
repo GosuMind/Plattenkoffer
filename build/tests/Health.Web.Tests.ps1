@@ -45,7 +45,7 @@ Invoke-WebHealth @{command='health-restore-preview';ids=@("$id/$($op.Id)")};Fini
 if(!$web.Health.Restore){throw $web.Health.Status}
 Invoke-WebHealth @{command='health-restore-approve';token=$web.Health.Restore.Id;approved=$true};Finish
 if((Read-PkHealthJson (Join-Path $directory 'repair.json')).State -ne 'RESTORED'){throw $web.Health.Status}
-$fixture02=Get-ChildItem "$root/work" -Directory -Filter 'health02-*'|Sort-Object LastWriteTime -Descending|Select-Object -First 1
+$fixture02=Get-ChildItem "$root/work" -Directory -Filter 'health02-*'|Where-Object {[IO.File]::Exists((Join-Path $_.FullName 'reports/scan.json'))}|Sort-Object LastWriteTime -Descending|Select-Object -First 1
 if($fixture02){
     $base=$fixture02.FullName
     $web.Health.Options=@{Root=(Join-Path $base 'Musik');FFmpeg=$FFmpeg;Probe=$Probe;Storage=(Join-Path $base 'reports');BackupRoot=(Join-Path $base 'backups');QuarantineRoot=(Join-Path $base 'quarantine');CoverRoot=(Join-Path $base 'covers');VdjDatabase=(Join-Path $base 'database-True.xml');Deep=$false}
@@ -59,4 +59,14 @@ if($fixture02){
     if($web.Health.Worker){throw 'Wrong special approval token accepted'}
     if((Get-PkHealthFileHash $web.Health.Options.VdjDatabase) -cne $dbHash){throw 'Read-only VDJ background operations changed database'}
 }
-'PASS: real GUI controller, background runspaces, scan serialization, approval token checks, repair and restore bridge.'
+Invoke-WebHealth @{command='health-mode';mode='advanced'}
+$web.Health.Dirty=$true;Save-WebHealthOptions
+$savedRoot=$web.Health.Options.Root
+Initialize-WebHealth
+if($web.Health.Mode -ne 'advanced' -or !$web.Health.Dirty -or $web.Health.Options.Root -ine $savedRoot -or !$web.Health.Report){throw 'Saved view, rescan marker, paths or report did not reload'}
+$validProbe=$web.Health.Options.Probe
+$web.Health.Options.Probe=Join-Path $fixtures.FullName 'missing-probe.exe'
+Invoke-WebHealth @{command='health-scan';deep=$false;incremental=$false};Finish
+if($web.Health.Status -notmatch 'Prüfprogramm fehlt' -or !$web.Health.Detail -or $messages[-1].busy){throw 'Missing tool did not produce actionable idle state'}
+$web.Health.Options.Probe=$validProbe;Save-WebHealthOptions
+'PASS: real GUI controller, background runspaces, scan serialization, approval token checks, repair and restore bridge, saved mode/report/rescan marker and actionable tool error.'

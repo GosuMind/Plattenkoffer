@@ -4,6 +4,8 @@ Stand 24. November 2026. App-Version 0.5.1. Erweiterung des integrierten Moduls 
 
 ## Umsetzungsstand
 
+Die ergänzte Bedienung mit einfacher und erweiterter Ansicht verwendet dieselben fachlichen Funktionen: [aktuelle Anleitung](BIBLIOTHEKSPFLEGE-BEDIENUNG.md), [nativer Prüfbericht vom 25. November 2026](BIBLIOTHEKSPFLEGE-PRUEFBERICHT-2026-11-25.md).
+
 | Priorität | Umsetzung |
 | --- | --- |
 | P0 | Bestehende Scans/Transaktionen weiterverwendet. Strikte UTF-8-Prozessausgabe, NFC-Vergleich, semantische Metadatenstatus und separate Kennzeichnung eigener Dekodierungsfehler. Unter .NET mit ArgumentList werden Argumente einzeln übergeben; Windows PowerShell 5.1 verwendet die getestete native Windows-Quotierung ohne Shell. |

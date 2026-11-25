@@ -1,29 +1,39 @@
 ﻿function Initialize-WebHealth {
     $web.Health=@{Worker=$null;Handle=$null;Control=$null;Operation='';Report=$null;Plan=$null;Restore=$null;Status='Noch kein Scan. Musikdateien werden beim Scan nicht verändert.';LastProgress='';Dirty=$false}
-    $web.Health.Options=@{Root=$settings.MusicRoot;Probe=$probe;FFmpeg=$ffmpeg;Storage=(Join-Path (Split-Path -Parent $config) 'health');BackupRoot=(Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Plattenkoffer-Backups');BackupLimitGB=20;Deep=$false;VideoSuffixes=@('Official Video','Official Audio','Music Video','Lyrics Video','HD','HQ','4K')}
+    $localRoot=Split-Path -Parent $config
+    $web.Health.Mode='simple';$web.Health.Detail=''
+    $web.Health.Options=@{Root=$settings.MusicRoot;Probe=$probe;FFmpeg=$ffmpeg;Storage=(Join-Path $localRoot 'health');BackupRoot=(Join-Path $localRoot 'health-backups');BackupLimitGB=20;Deep=$false;VideoSuffixes=@('Official Video','Official Audio','Music Video','Lyrics Video','HD','HQ','4K')}
     $path=Join-Path $config 'health-options.json'
     $web.Health.SpecialPlan=$null;$web.Health.SpecialRestore=$null;$web.Health.Vdj=$null;$web.Health.Candidates=@();$web.Health.CoverRecovery=$null
-    $web.Health.Options.VdjDatabase='';$web.Health.Options.QuarantineRoot=Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Plattenkoffer-Quarantine';$web.Health.Options.CoverRoot=Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Plattenkoffer-Covers'
+    $web.Health.Options.VdjDatabase='';$web.Health.Options.QuarantineRoot=Join-Path $localRoot 'health-quarantine';$web.Health.Options.CoverRoot=Join-Path $localRoot 'health-covers'
     if ([IO.File]::Exists($path)) {
         try {
             $saved=Read-PkHealthJson $path
+            if($saved.Mode -in @('simple','advanced')){$web.Health.Mode=$saved.Mode}
+            if($saved.Dirty -is [bool]){$web.Health.Dirty=$saved.Dirty}
             foreach($key in @('Root','Probe','FFmpeg','Storage','BackupRoot','VideoSuffixes','VdjDatabase','QuarantineRoot','CoverRoot')){if($saved.$key){$web.Health.Options[$key]=$saved.$key}}
+            if($saved.Deep -is [bool]){$web.Health.Options.Deep=$saved.Deep}
             if($null -ne $saved.BackupLimitGB){$web.Health.Options.BackupLimitGB=[double]$saved.BackupLimitGB}
         } catch { $web.Health.Status='Gespeicherte Pflege-Einstellungen konnten nicht gelesen werden.' }
     }
     $path=Join-Path $web.Health.Options.Storage 'scan.json'
-    if ([IO.File]::Exists($path)) { try { $report=Read-PkHealthJson $path 256MB;if($report.Root -ieq $web.Health.Options.Root){$web.Health.Report=$report} } catch { $web.Health.Status='Scanbericht konnte nicht gelesen werden. Erneuter Scan erforderlich.' } }
+    if ([IO.File]::Exists($path)) { try { $report=Read-PkHealthJson $path 256MB;if($report.Root -ieq $web.Health.Options.Root){$web.Health.Report=$report;$web.Health.Status="Gespeicherte Prüfergebnisse geladen: $(@($report.Records).Count) Dateien."} } catch { $web.Health.Status='Scanbericht konnte nicht gelesen werden. Erneuter Scan erforderlich.' } }
 }
 
 function Send-WebHealth {
     $job=$web.Health
+    $readable=@{}
+    foreach($key in @('Storage','BackupRoot','QuarantineRoot')){
+        try{if($job.Options[$key]){Assert-SafePath $job.Options[$key];$readable[$key]=$true}}catch{Set-WebHealthError $_.Exception.Message}
+    }
     $payload=@{type='health';busy=[bool]$job.Worker;operation=$job.Operation;status=$job.Status;options=$job.Options;summary=$null;rows=@();backups=@();plans=@();lastScan='';scanState='';warnings=@();dirty=[bool]$job.Dirty}
-    if ($job.Control) { $payload.progress=@{done=$job.Control.Done;total=$job.Control.Total;current=$job.Control.Current} }
+    $payload.mode=$job.Mode;$payload.detail=$job.Detail
+    if ($job.Control) { $payload.progress=@{done=$job.Control.Done;total=$job.Control.Total;current=$job.Control.Current;phase=$job.Control.Phase;step=$job.Control.Step;filePercent=$job.Control.FilePercent} }
     $payload.vdj=$job.Vdj;$payload.candidates=@($job.Candidates);$payload.vdjBackups=@();$payload.quarantine=@()
     if(!$job.Worker){
         $vdjRoot=Join-Path $job.Options.BackupRoot 'vdj'
-        if([IO.Directory]::Exists($vdjRoot)){foreach($folder in Get-ChildItem -LiteralPath $vdjRoot -Directory|Where-Object Name -match '^[a-f0-9]{32}$'){try{$m=Read-PkHealthJson (Join-Path $folder.FullName 'repair.json');$payload.vdjBackups+=@{id=$folder.Name;path=$m.Path;state=$m.State;date=$m.StartedAt}}catch{}}}
-        if($job.Options.QuarantineRoot -and [IO.Directory]::Exists($job.Options.QuarantineRoot)){foreach($folder in Get-ChildItem -LiteralPath $job.Options.QuarantineRoot -Directory|Where-Object Name -match '^[a-f0-9]{32}$'){Assert-SafePath $folder.FullName;foreach($file in Get-ChildItem -LiteralPath $folder.FullName -Directory|Where-Object Name -match '^[A-F0-9]{64}$'){try{$m=Read-PkHealthJson (Join-Path $file.FullName 'quarantine.json');$payload.quarantine+=@{id="$($folder.Name)/$($file.Name)";path=$m.Path;keeper=$m.Keeper;state=$m.State;date=$m.StartedAt}}catch{}}}}
+        if($readable.BackupRoot -and [IO.Directory]::Exists($vdjRoot)){foreach($folder in Get-ChildItem -LiteralPath $vdjRoot -Directory|Where-Object Name -match '^[a-f0-9]{32}$'){try{$m=Read-PkHealthJson (Join-Path $folder.FullName 'repair.json');$payload.vdjBackups+=@{id=$folder.Name;path=$m.Path;state=$m.State;date=$m.StartedAt}}catch{}}}
+        if($readable.QuarantineRoot -and [IO.Directory]::Exists($job.Options.QuarantineRoot)){foreach($folder in Get-ChildItem -LiteralPath $job.Options.QuarantineRoot -Directory|Where-Object Name -match '^[a-f0-9]{32}$'){Assert-SafePath $folder.FullName;foreach($file in Get-ChildItem -LiteralPath $folder.FullName -Directory|Where-Object Name -match '^[A-F0-9]{64}$'){try{$m=Read-PkHealthJson (Join-Path $file.FullName 'quarantine.json');$payload.quarantine+=@{id="$($folder.Name)/$($file.Name)";path=$m.Path;keeper=$m.Keeper;state=$m.State;date=$m.StartedAt}}catch{}}}}
     }
     if ($job.Report) {
         $payload.summary=Get-PkHealthSummary $job.Report
@@ -33,7 +43,7 @@ function Send-WebHealth {
         })
     }
     # Index journal headers only; no VirtualDJ database access and no executable content.
-    if (!$job.Worker -and [IO.Directory]::Exists($job.Options.BackupRoot)) {
+    if (!$job.Worker -and $readable.BackupRoot -and [IO.Directory]::Exists($job.Options.BackupRoot)) {
         $payload.backupBytes=Get-PkHealthBackupUsage $job.Options
         foreach ($folder in (Get-ChildItem -LiteralPath $job.Options.BackupRoot -Directory | Where-Object Name -match '^[0-9a-f]{32}$')) {
             Assert-SafePath $folder.FullName
@@ -45,7 +55,7 @@ function Send-WebHealth {
             }
         }
     }
-    if (!$job.Worker -and [IO.Directory]::Exists($job.Options.Storage)) {
+    if (!$job.Worker -and $readable.Storage -and [IO.Directory]::Exists($job.Options.Storage)) {
         foreach ($file in (Get-ChildItem -LiteralPath $job.Options.Storage -Filter 'plan-*.json' -File | Sort-Object LastWriteTime -Descending | Select-Object -First 30)) {
             try {
                 $plan=Read-PkHealthJson $file.FullName
@@ -63,15 +73,16 @@ function Start-WebHealthJob([string]$Operation,$Argument) {
     $job=$web.Health
     if ($job.Worker -or $state.Worker -or $libraryView.Diagnostic.Worker -or $web.Conversion.Worker -or $web.Export.Worker -or $web.TransitionScan.Worker -or ($updateCheck.Worker -and $updateCheck.Phase -eq 'Download')) { throw 'Zuerst den laufenden Vorgang beenden.' }
     if ($Operation -in @('repair','restore','vdj-repair','vdj-restore','quarantine','quarantine-restore') -and $transport.Enabled) { throw 'Vor Änderungen bitte die Wiedergabe stoppen.' }
-    Assert-PkHealthOptions $job.Options
-    $job.Control=[hashtable]::Synchronized(@{Cancel=$false;Done=0;Total=0;Current=''})
-    $job.Operation=$Operation;$job.LastProgress='';$job.Status='Vorgang wird gestartet …'
+    $job.Control=[hashtable]::Synchronized(@{Cancel=$false;Done=0;Total=0;Current='';Phase='preparing';Step='Prüfung wird vorbereitet …'})
+    $job.Detail='';$job.Operation=$Operation;$job.LastProgress='';$job.Status='Prüfung wird vorbereitet …'
+    Send-WebCollectionMessage @{type='health-progress';busy=$true;phase='preparing';status=$job.Status}
     $script={
         param($Directory,$Options,$Operation,$Argument,$Report,$Control)
         $ErrorActionPreference='Stop'
         . (Join-Path $Directory 'DJ-Sets-Download.ps1') -LibraryOnly -ToolRoot $Directory
         . (Join-Path $Directory 'DJ-Sets-Health.ps1')
         . (Join-Path $Directory 'DJ-Sets-HealthRepair.ps1')
+        Assert-PkHealthOptions $Options
         switch($Operation){
             scan { Invoke-PkHealthScan $Options $Control -Incremental:([bool]$Argument) }
             plan { New-PkHealthPlan $Options $Report $Argument }
@@ -103,10 +114,11 @@ function Complete-WebHealth {
     $job=$web.Health
     if (!$job.Worker) {return}
     if (!$job.Handle.IsCompleted) {
-        $progress="$($job.Control.Done)|$($job.Control.Total)|$($job.Control.Current)"
+        $progress="$($job.Control.Done)|$($job.Control.Total)|$($job.Control.Current)|$($job.Control.Phase)|$($job.Control.Step)|$($job.Control.FilePercent)"
         if($progress -cne $job.LastProgress){
             $job.LastProgress=$progress
-            Send-WebCollectionMessage @{type='health-progress';done=$job.Control.Done;total=$job.Control.Total;current=$job.Control.Current;status=$(if($job.Control.Cancel){'Abbruch angefordert …'}else{'Vorgang läuft …'})}
+            $job.Status=if($job.Control.Cancel){'Abbruch angefordert …'}elseif($job.Control.Phase -eq 'discovery'){'Musikdateien werden gesucht …'}elseif($job.Control.Phase -eq 'preparing'){'Prüfung wird vorbereitet …'}else{'Prüfung läuft …'}
+            Send-WebCollectionMessage @{type='health-progress';busy=$true;done=$job.Control.Done;total=$job.Control.Total;current=$job.Control.Current;phase=$job.Control.Phase;step=$job.Control.Step;filePercent=$job.Control.FilePercent;status=$job.Status}
         }
         return
     }
@@ -116,7 +128,7 @@ function Complete-WebHealth {
         if($job.Worker.Streams.Error.Count){throw $job.Worker.Streams.Error[0]}
         if($job.Control.Cancel -and $operation -in @('plan','vdj-plan','quarantine-plan','vdj-scan','cover-recovery','vdj-restore-preview','quarantine-restore-preview')){throw 'Vorgang abgebrochen. Keine neue Freigabevorlage übernommen.'}
         switch($operation){
-            scan {$job.Report=$result;$job.Plan=$null;$job.Dirty=$false;$job.Status="Scan $($result.State). $(@($result.Records).Count) Dateien geprüft."}
+            scan {$job.Report=$result;$job.Plan=$null;$job.Dirty=$false;$count=@($result.Records).Count;$job.Status=if($result.State -eq 'CANCELLED'){"Prüfung abgebrochen. $count Dateien als Teilergebnis gespeichert."}elseif(!$result.Total){'Keine unterstützten Musikdateien gefunden.'}else{"Prüfung abgeschlossen. $count Dateien geprüft."};if(@($result.Warnings).Count){$job.Status+=' Einige Ordner oder Dateien konnten nicht vollständig geprüft werden. Hinweise beachten.'}}
             plan {$job.Plan=$result;$job.Status='Reparaturvorschau erstellt. Noch keine Musikdatei verändert.'}
             repair {$job.Plan=$null;$job.Dirty=$true;$job.Status="Reparatur beendet. $(@($result.Results|Where-Object State -eq 'COMMITTED').Count) erfolgreich, $(@($result.Results|Where-Object State -ne 'COMMITTED').Count) nicht übernommen. Ergebnisprotokolle prüfen und neu scannen.";Update-LibraryResults -Reload}
             'restore-preview' {$job.Restore=$result;$job.Status='Backups und aktueller Dateizustand geprüft. Wiederherstellung noch nicht ausgeführt.'}
@@ -133,8 +145,8 @@ function Complete-WebHealth {
             'quarantine-restore' {$job.SpecialRestore=$null;$job.Dirty=$true;$job.Status='Archivierte Audiodatei wiederhergestellt. Erneut scannen.';Update-LibraryResults -Reload}
             'cover-recovery' {$job.CoverRecovery=$result;$job.Status='Coverquelle vorbereitet. Noch keine Sammlungsdatei verändert.'}
         }
-    } catch {$job.Status=$_.Exception.Message}
-    finally {$job.Worker.Dispose();$job.Worker=$null;$job.Handle=$null}
+    } catch {Set-WebHealthError $_.Exception.Message}
+    finally {$job.Worker.Dispose();$job.Worker=$null;$job.Handle=$null;try{Save-WebHealthOptions}catch{Set-WebHealthError $_.Exception.Message}}
     Send-WebHealth
     if($operation -eq 'plan' -and $job.Plan){
         $payload=@{type='health-plan';id=$job.Plan.Id;bytes=$job.Plan.EstimatedBytes;items=@($job.Plan.Items)}
@@ -151,6 +163,12 @@ function Invoke-WebHealth($Message) {
     try {
         switch($Message.command){
             health {Send-WebHealth}
+            'health-mode' {if($Message.mode -in @('simple','advanced')){$job.Mode=$Message.mode;Save-WebHealthOptions};Send-WebHealth}
+            'health-folder' {
+                if($job.Worker){throw 'Zuerst die laufende Prüfung beenden.'}
+                $picker=[Windows.Forms.FolderBrowserDialog]@{Description='Musikordner für die Bibliothekspflege wählen';SelectedPath=$job.Options.Root}
+                try{if($picker.ShowDialog($form) -eq 'OK'){Assert-SafePath $picker.SelectedPath;$job.Options.Root=$picker.SelectedPath;$job.Report=$null;$job.Dirty=$false;Save-WebHealthOptions;$job.Status='Musikordner ausgewählt. Sammlung prüfen.'}}finally{$picker.Dispose()};Send-WebHealth
+            }
             'health-options' {
                 if($job.Worker){throw 'Während eines Vorgangs können Einstellungen nicht geändert werden.'}
                 $next=@{}+$job.Options
@@ -164,11 +182,11 @@ function Invoke-WebHealth($Message) {
                 $next.BackupLimitGB=$limit
                 if($Message.values.VdjDatabase){Assert-SafePath $Message.values.VdjDatabase;$next.VdjDatabase=[IO.Path]::GetFullPath($Message.values.VdjDatabase)}else{$next.VdjDatabase=''}
                 Assert-PkHealthOptions $next
-                Write-PkHealthJson (Join-Path $config 'health-options.json') $next
+                $saved=@{}+$next;$saved.Mode=$job.Mode;$saved.Dirty=($job.Dirty -and $next.Root -ieq $job.Options.Root);Write-PkHealthJson (Join-Path $config 'health-options.json') $saved
                 if($next.Root -ine $job.Options.Root){$job.Report=$null;$job.Dirty=$false}
                 $job.Options=$next;$job.Plan=$null;$job.Restore=$null;$job.SpecialPlan=$null;$job.SpecialRestore=$null;$job.Vdj=$null;$job.Status='Pflege-Einstellungen gespeichert.';Send-WebHealth
             }
-            'health-scan' {$job.Options.Deep=[bool]$Message.deep;Start-WebHealthJob 'scan' ([bool]$Message.incremental)}
+            'health-scan' {if($job.Worker){throw 'Zuerst den laufenden Vorgang beenden.'};$job.Options.Deep=[bool]$Message.deep;Save-WebHealthOptions;Start-WebHealthJob 'scan' ([bool]$Message.incremental)}
             'health-cancel' {if($job.Control){$job.Control.Cancel=$true};$job.Status='Abbruch angefordert. Bereits abgeschlossene Dateien bleiben protokolliert.';Send-WebHealth}
             'health-resume-plan' {
                 if($Message.id -cnotmatch '^[a-f0-9]{32}$'){throw 'Ungültige Auftrags-ID.'}
@@ -297,5 +315,16 @@ function Invoke-WebHealth($Message) {
                 }}finally{$picker.Dispose()}
             }
         }
-    }catch{$job.Status=$_.Exception.Message;Send-WebHealth}
+    }catch{Set-WebHealthError $_.Exception.Message;Send-WebHealth}
+}
+
+function Set-WebHealthError([string]$Detail) {
+    $web.Health.Detail=$Detail
+    $web.Health.Status=if(![IO.Directory]::Exists($web.Health.Options.Root)){'Der Musikordner ist nicht erreichbar. Bitte „Ordner ändern“ wählen und einen erreichbaren Musikordner angeben.'}elseif(![IO.File]::Exists($web.Health.Options.Probe) -or ![IO.File]::Exists($web.Health.Options.FFmpeg)){'Ein Prüfprogramm fehlt. Unter Erweitert → Ordner, Werkzeuge und Scanoptionen die Programmpfade korrigieren.'}elseif($Detail -match 'Verknüpfung|Pfad|Ordner|path'){'Ein gewählter Pfad kann nicht sicher verwendet werden. Unter Erweitert → Ordner, Werkzeuge und Scanoptionen einen lokalen Ordner ohne Verknüpfung wählen.'}else{'Die Prüfung konnte nicht abgeschlossen werden. Bitte Diagnose öffnen, Ursache prüfen und erneut versuchen. '+$(if($Detail -match 'laufenden Vorgang|Wiedergabe'){$Detail}else{''})}
+    if(Get-Command Write-AppError -ErrorAction SilentlyContinue){Write-AppError 'Bibliothekspflege' $Detail}
+}
+
+function Save-WebHealthOptions {
+    $saved=@{}+$web.Health.Options;$saved.Mode=$web.Health.Mode;$saved.Dirty=[bool]$web.Health.Dirty
+    Write-PkHealthJson (Join-Path $config 'health-options.json') $saved
 }
