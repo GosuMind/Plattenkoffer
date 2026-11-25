@@ -19,6 +19,10 @@ Signieren aus der fertigen EXE berechnet.
 
 ## Datenschutz
 
+Der Update-Hinweis ruft beim Start die neueste stabile GitHub-Veröffentlichung ab. Für die automatische Installation muss die installierte Version den SHA-256-Fingerabdruck des Produktionszertifikats enthalten. Im Signier-Workflow wird er als GitHub-Variable `PK_UPDATE_SIGNER_SHA256` hinterlegt und beim Build in das Setup übernommen. Der Workflow prüft das zurückgelieferte Zertifikat gegen denselben Fingerabdruck.
+
+Das Update prüft die Authenticode-Signatur, den Zeitstempel und die im Installer hinterlegte Versionsnummer vor dem Schließen der App und erneut vor der Ausführung. Die Setup-Datei wird als `Plattenkoffer-Setup-<Version>.exe` am stabilen Release `v<Version>` veröffentlicht. Bei einem Zertifikatswechsel brauchen Installationen mit dem bisherigen Fingerabdruck ein manuell installiertes Setup mit dem neuen Fingerabdruck.
+
 - Bei Installation und bei manuell gestarteten Werkzeug-Updates verbindet
   sich Plattenkoffer mit GitHub und Gyan, um die Werkzeugpakete zu beziehen.
 - Beim Laden der Vorschau oder beim Download verarbeitet yt-dlp den gewählten
